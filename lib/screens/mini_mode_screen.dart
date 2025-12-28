@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../models/chat_message.dart';
+import '../models/conversation.dart';
 import '../provider/ChatProvider.dart';
 import '../services/ollama_service.dart';
 import '../widgets/typing_indicaator.dart';
-import '../widgets/message_bubble.dart'; // ✅ ADDED: Import MessageBubble
+import '../widgets/message_bubble.dart';
 import '../utils/message_stream_handler.dart';
 import 'dart:async';
 
@@ -25,7 +26,7 @@ class MiniModeScreen extends StatefulWidget {
   State<MiniModeScreen> createState() => _MiniModeScreenState();
 }
 
-class _MiniModeScreenState extends State<MiniModeScreen> with TickerProviderStateMixin {
+class _MiniModeScreenState extends State<MiniModeScreen> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final OllamaService _ollamaService = OllamaService();
@@ -33,46 +34,11 @@ class _MiniModeScreenState extends State<MiniModeScreen> with TickerProviderStat
 
   late final MessageStreamHandler _messageStreamHandler;
 
-  bool _isExpanded = false;
-
-  // Suggested prompts
-  List<String> _suggestedPrompts = [
-    'Explain this concept',
-    'Write code for...',
-    'Summarize',
-    'Debug this',
-  ];
-
-  late AnimationController _expandController;
-  late Animation<double> _expandAnimation;
-  late AnimationController _pulseController;
-  late Animation<double> _pulseAnimation;
-
   @override
   void initState() {
     super.initState();
     _messageStreamHandler = MessageStreamHandler(_ollamaService);
-    _setupAnimations();
     _scrollToBottom();
-  }
-
-  void _setupAnimations() {
-    _expandController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 300),
-    );
-    _expandAnimation = CurvedAnimation(
-      parent: _expandController,
-      curve: Curves.easeInOut,
-    );
-
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    )..repeat(reverse: true);
-    _pulseAnimation = Tween<double>(begin: 0.95, end: 1.05).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
   }
 
   @override
@@ -80,10 +46,43 @@ class _MiniModeScreenState extends State<MiniModeScreen> with TickerProviderStat
     _controller.dispose();
     _scrollController.dispose();
     _inputFocusNode.dispose();
-    _expandController.dispose();
-    _pulseController.dispose();
     _messageStreamHandler.dispose();
     super.dispose();
+  }
+
+  // Ensure we have a valid conversation to work with
+  void _ensureConversationExists(ChatProvider provider) {
+    // If no conversation is selected, create one
+    if (provider.selectedConversationIndex == null ||
+        provider.selectedConversationIndex! >= provider.conversations.length) {
+      final newConversation = Conversation(
+        title: 'New Chat',
+        messages: [],
+        timestamp: DateTime.now(),
+      );
+      provider.addConversation(newConversation);
+      provider.selectConversation(0);
+      provider.setMessages([]);
+      debugPrint('📝 Created new conversation in mini mode');
+    }
+  }
+
+  // Sync current messages to the selected conversation
+  void _syncMessagesToConversation(ChatProvider provider) {
+    if (provider.selectedConversationIndex == null) return;
+
+    final index = provider.selectedConversationIndex!;
+    if (index >= provider.conversations.length) return;
+
+    final currentConv = provider.conversations[index];
+    final updatedConv = Conversation(
+      title: currentConv.title,
+      messages: List.from(provider.messages),
+      timestamp: currentConv.timestamp,
+    );
+
+    provider.updateConversation(index, updatedConv);
+    debugPrint('💾 Synced ${provider.messages.length} messages to conversation $index');
   }
 
   Future<void> _sendMessage() async {
@@ -97,6 +96,9 @@ class _MiniModeScreenState extends State<MiniModeScreen> with TickerProviderStat
       return;
     }
 
+    // Ensure we have a conversation to work with
+    _ensureConversationExists(provider);
+
     debugPrint('📤 Mini mode: Sending message');
 
     final userMessage = ChatMessage(
@@ -108,6 +110,18 @@ class _MiniModeScreenState extends State<MiniModeScreen> with TickerProviderStat
     provider.addMessage(userMessage);
     _controller.clear();
 
+    // Create empty assistant message placeholder for streaming
+    final assistantMessage = ChatMessage(
+      text: '',
+      isUser: false,
+      timestamp: DateTime.now(),
+      modelName: provider.selectedModel,
+    );
+    provider.addMessage(assistantMessage);
+
+    // Sync both messages immediately
+    _syncMessagesToConversation(provider);
+
     provider.startGenerating();
     provider.setIsSending(true);
 
@@ -116,6 +130,7 @@ class _MiniModeScreenState extends State<MiniModeScreen> with TickerProviderStat
     final generatingForConversationIndex = provider.selectedConversationIndex;
 
     try {
+      // Build conversation history for context
       final conversationHistory = StringBuffer();
       final messages = provider.messages;
 
@@ -157,11 +172,18 @@ class _MiniModeScreenState extends State<MiniModeScreen> with TickerProviderStat
 
       debugPrint('✅ Mini mode: Message complete');
 
+      // Final sync after generation completes
+      if (mounted) {
+        _syncMessagesToConversation(provider);
+      }
+
     } catch (e) {
       debugPrint('❌ Mini mode error: $e');
       if (mounted) {
         provider.stopGenerating();
         provider.setIsSending(false);
+        // Sync even on error to preserve partial responses
+        _syncMessagesToConversation(provider);
       }
     } finally {
       if (mounted) {
@@ -184,6 +206,9 @@ class _MiniModeScreenState extends State<MiniModeScreen> with TickerProviderStat
     provider.stopGenerating();
     provider.setIsSending(false);
 
+    // Sync messages after stopping (to save partial response)
+    _syncMessagesToConversation(provider);
+
     debugPrint('✅ Mini mode: Generation stopped');
   }
 
@@ -197,17 +222,6 @@ class _MiniModeScreenState extends State<MiniModeScreen> with TickerProviderStat
         );
       }
     });
-  }
-
-  void _toggleExpanded() {
-    setState(() {
-      _isExpanded = !_isExpanded;
-    });
-    if (_isExpanded) {
-      _expandController.forward();
-    } else {
-      _expandController.reverse();
-    }
   }
 
   void _copyLastResponse() {
@@ -241,6 +255,8 @@ class _MiniModeScreenState extends State<MiniModeScreen> with TickerProviderStat
           TextButton(
             onPressed: () {
               provider.clearMessages();
+              // Sync the cleared state
+              _syncMessagesToConversation(provider);
               Navigator.pop(context);
               _showSnackBar('Chat cleared', Icons.delete_sweep);
             },
@@ -251,73 +267,35 @@ class _MiniModeScreenState extends State<MiniModeScreen> with TickerProviderStat
     );
   }
 
-  void _addNewPrompt() {
-    final TextEditingController promptController = TextEditingController();
+  // Regenerate the last assistant response
+  void _regenerateLastResponse() async {
+    if (!mounted) return;
+    final provider = context.read<ChatProvider>();
 
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Add Quick Prompt', style: TextStyle(fontSize: 16)),
-        content: TextField(
-          controller: promptController,
-          decoration: const InputDecoration(
-            hintText: 'Enter prompt text...',
-            border: OutlineInputBorder(),
-          ),
-          maxLines: 2,
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              if (promptController.text.trim().isNotEmpty) {
-                setState(() {
-                  _suggestedPrompts.add(promptController.text.trim());
-                });
-                Navigator.pop(context);
-                _showSnackBar('Prompt added', Icons.check_circle);
-              }
-            },
-            child: const Text('Add'),
-          ),
-        ],
-      ),
-    );
+    if (provider.messages.length < 2 || provider.isGenerating) return;
+
+    provider.removeLastMessage();
+    _syncMessagesToConversation(provider);
+
+    // Get the last user message text before sending
+    final lastUserMessage = provider.messages.last.text;
+    _controller.text = lastUserMessage;
+
+    await _sendMessage();
   }
 
-  void _removePrompt(int index) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Remove Prompt', style: TextStyle(fontSize: 16)),
-        content: Text('Remove "${_suggestedPrompts[index]}"?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              setState(() {
-                _suggestedPrompts.removeAt(index);
-              });
-              Navigator.pop(context);
-              _showSnackBar('Prompt removed', Icons.delete);
-            },
-            child: const Text('Remove', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
-    );
-  }
+  // Edit a message and resend
+  void _editMessage(int index) {
+    if (!mounted) return;
+    final provider = context.read<ChatProvider>();
 
-  void _usePrompt(String prompt) {
-    _controller.text = prompt;
-    _inputFocusNode.requestFocus();
+    if (index < 0 || index >= provider.messages.length) return;
+
+    final message = provider.messages[index];
+    _controller.text = message.text;
+
+    provider.removeMessagesFromIndex(index);
+    _syncMessagesToConversation(provider);
   }
 
   void _showSnackBar(String message, IconData icon) {
@@ -339,35 +317,6 @@ class _MiniModeScreenState extends State<MiniModeScreen> with TickerProviderStat
     );
   }
 
-  // ✅ ADDED: Regenerate function for MessageBubble
-  void _regenerateLastResponse() async {
-    if (!mounted) return;
-    final provider = context.read<ChatProvider>();
-
-    if (provider.messages.length < 2 || provider.isGenerating) return;
-
-    // Remove last assistant message
-    provider.removeLastMessage();
-
-    // Get the last user message and resend it
-    final lastUserMessage = provider.messages.last.text;
-    await _sendMessage();
-  }
-
-  // ✅ ADDED: Edit message function for MessageBubble
-  void _editMessage(int index) {
-    if (!mounted) return;
-    final provider = context.read<ChatProvider>();
-
-    if (index < 0 || index >= provider.messages.length) return;
-
-    final message = provider.messages[index];
-    _controller.text = message.text;
-
-    // Remove messages from this point onwards
-    provider.removeMessagesFromIndex(index);
-  }
-
   Color get _backgroundColor => widget.isDarkMode
       ? const Color(0xFF1E1E1E)
       : const Color(0xFFF5F5F5);
@@ -384,12 +333,16 @@ class _MiniModeScreenState extends State<MiniModeScreen> with TickerProviderStat
   Widget build(BuildContext context) {
     return Consumer<ChatProvider>(
       builder: (context, provider, child) {
+        // Ensure we have a conversation when building
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _ensureConversationExists(provider);
+        });
+
         return Scaffold(
           backgroundColor: _backgroundColor,
           body: Column(
             children: [
-              _buildCompactHeader(provider),
-              if (_isExpanded) _buildExpandedControls(provider),
+              _buildHeader(provider),
               Expanded(child: _buildMessageList(provider)),
               _buildInputArea(provider),
             ],
@@ -399,9 +352,9 @@ class _MiniModeScreenState extends State<MiniModeScreen> with TickerProviderStat
     );
   }
 
-  Widget _buildCompactHeader(ChatProvider provider) {
+  Widget _buildHeader(ChatProvider provider) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: _surfaceColor,
         border: Border(
@@ -412,43 +365,35 @@ class _MiniModeScreenState extends State<MiniModeScreen> with TickerProviderStat
       ),
       child: Row(
         children: [
+          // Model selector
+          Icon(Icons.psychology, size: 18, color: Colors.grey[600]),
+          const SizedBox(width: 8),
           Expanded(
-            child: MouseRegion(
-              cursor: SystemMouseCursors.move,
-              child: Row(
-                children: [
-                  Icon(Icons.drag_indicator, size: 18, color: Colors.grey[600]),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'Mini Mode',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: widget.isDarkMode ? Colors.white : Colors.black87,
-                          ),
-                        ),
-                        Text(
-                          provider.selectedModel ?? "",
-                          style: TextStyle(fontSize: 9, color: Colors.grey[600]),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+            child: DropdownButton<String>(
+              value: provider.selectedModel,
+              isExpanded: true,
+              isDense: true,
+              underline: Container(),
+              style: TextStyle(
+                fontSize: 13,
+                color: widget.isDarkMode ? Colors.white : Colors.black87,
               ),
+              items: widget.availableModels.map((model) {
+                return DropdownMenuItem(
+                  value: model,
+                  child: Text(model, overflow: TextOverflow.ellipsis),
+                );
+              }).toList(),
+              onChanged: (value) {
+                if (value != null && !provider.isGenerating) {
+                  provider.setSelectedModel(value);
+                }
+              },
             ),
           ),
-          _buildHeaderButton(
-            icon: _isExpanded ? Icons.expand_less : Icons.expand_more,
-            onPressed: _toggleExpanded,
-            tooltip: _isExpanded ? 'Hide controls' : 'Show controls',
-          ),
+          const SizedBox(width: 8),
+
+          // Action buttons
           _buildHeaderButton(
             icon: Icons.copy,
             onPressed: _copyLastResponse,
@@ -487,176 +432,19 @@ class _MiniModeScreenState extends State<MiniModeScreen> with TickerProviderStat
     );
   }
 
-  Widget _buildExpandedControls(ChatProvider provider) {
-    return SizeTransition(
-      sizeFactor: _expandAnimation,
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: _surfaceColor,
-          border: Border(
-            bottom: BorderSide(
-              color: widget.isDarkMode ? Colors.grey[800]! : Colors.grey[300]!,
-            ),
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Model selector
-            Row(
-              children: [
-                Icon(Icons.psychology, size: 16, color: Colors.grey[600]),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: DropdownButton<String>(
-                    value: provider.selectedModel,
-                    isExpanded: true,
-                    isDense: true,
-                    underline: Container(),
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: widget.isDarkMode ? Colors.white : Colors.black87,
-                    ),
-                    items: widget.availableModels.map((model) {
-                      return DropdownMenuItem(
-                        value: model,
-                        child: Text(model, overflow: TextOverflow.ellipsis),
-                      );
-                    }).toList(),
-                    onChanged: (value) {
-                      if (value != null && !provider.isGenerating) {
-                        provider.setSelectedModel(value);
-                      }
-                    },
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-
-            // Quick prompts section
-            Row(
-              children: [
-                Icon(Icons.bolt, size: 14, color: Colors.grey[600]),
-                const SizedBox(width: 6),
-                Text(
-                  'Quick Prompts',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey[600],
-                  ),
-                ),
-                const Spacer(),
-                InkWell(
-                  onTap: _addNewPrompt,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: _accentColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: _accentColor.withOpacity(0.3)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.add, size: 12, color: _accentColor),
-                        const SizedBox(width: 2),
-                        Text(
-                          'Add',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: _accentColor,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-
-            // Prompt chips
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: _suggestedPrompts.asMap().entries.map((entry) {
-                final index = entry.key;
-                final prompt = entry.value;
-                return _buildPromptChip(prompt, index);
-              }).toList(),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPromptChip(String prompt, int index) {
-    return InkWell(
-      onTap: () => _usePrompt(prompt),
-      onLongPress: () => _removePrompt(index),
-      borderRadius: BorderRadius.circular(6),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: widget.isDarkMode
-              ? Colors.blue[900]!.withOpacity(0.3)
-              : Colors.blue[50],
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(
-            color: widget.isDarkMode
-                ? Colors.blue[700]!.withOpacity(0.5)
-                : Colors.blue[200]!,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.flash_on,
-              size: 12,
-              color: widget.isDarkMode ? Colors.blue[300] : Colors.blue[700],
-            ),
-            const SizedBox(width: 4),
-            Flexible(
-              child: Text(
-                prompt,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: widget.isDarkMode ? Colors.blue[200] : Colors.blue[800],
-                  fontWeight: FontWeight.w500,
-                ),
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ✅ MODIFIED: Now uses MessageBubble widget with centered compact layout
   Widget _buildMessageList(ChatProvider provider) {
     if (provider.messages.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            ScaleTransition(
-              scale: _pulseAnimation,
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: _accentColor.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(Icons.chat_bubble_outline, size: 36, color: _accentColor),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: _accentColor.withOpacity(0.1),
+                shape: BoxShape.circle,
               ),
+              child: Icon(Icons.chat_bubble_outline, size: 36, color: _accentColor),
             ),
             const SizedBox(height: 12),
             Text(
@@ -679,7 +467,7 @@ class _MiniModeScreenState extends State<MiniModeScreen> with TickerProviderStat
 
     return ListView.builder(
       controller: _scrollController,
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 0),
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
       itemCount: provider.messages.length + (provider.isGenerating ? 1 : 0),
       itemBuilder: (context, index) {
         if (provider.isGenerating && index == provider.messages.length) {
@@ -695,7 +483,6 @@ class _MiniModeScreenState extends State<MiniModeScreen> with TickerProviderStat
         final message = provider.messages[index];
         final isLastMessage = index == provider.messages.length - 1;
 
-        // ✅ Wrap MessageBubble in custom compact layout
         return _buildCompactMessageWrapper(
           message: message,
           index: index,
@@ -706,7 +493,6 @@ class _MiniModeScreenState extends State<MiniModeScreen> with TickerProviderStat
     );
   }
 
-  // ✅ ADDED: Compact wrapper that centers MessageBubble with avatar
   Widget _buildCompactMessageWrapper({
     required ChatMessage message,
     required int index,
@@ -714,78 +500,65 @@ class _MiniModeScreenState extends State<MiniModeScreen> with TickerProviderStat
     required ChatProvider provider,
   }) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Avatar
-          Container(
-            width: 24,
-            height: 24,
-            decoration: BoxDecoration(
-              color: message.isUser ? _accentColor : Colors.grey[700],
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              message.isUser ? Icons.person : Icons.smart_toy,
-              size: 14,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(width: 8),
-
-          // Message content with MessageBubble
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Header row with name and timestamp
-                Row(
-                  children: [
-                    Text(
-                      message.isUser ? 'You' : (provider.selectedModel?.split(':').first ?? ''),
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: widget.isDarkMode ? Colors.grey[300] : Colors.grey[800],
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      _formatTimestamp(message.timestamp),
-                      style: TextStyle(fontSize: 9, color: Colors.grey[600]),
-                    ),
-                    if (!message.isUser &&
-                        message.thinkingText != null &&
-                        message.thinkingText!.isNotEmpty) ...[
-                      const SizedBox(width: 6),
-                      Icon(
-                        Icons.psychology,
-                        size: 12,
-                        color: Colors.orange[400],
-                      ),
-                    ],
-                  ],
+          // Header row with avatar, name, and timestamp
+          Row(
+            children: [
+              Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: message.isUser ? _accentColor : Colors.grey[700],
+                  shape: BoxShape.circle,
                 ),
-                const SizedBox(height: 4),
-
-                // Use MessageBubble for markdown rendering
-                Transform.scale(
-                  scale: 0.95, // Slightly smaller for compact mode
-                  alignment: Alignment.topLeft,
-                  child: MessageBubble(
-                    message: message,
-                    isDarkMode: widget.isDarkMode,
-                    onEdit: message.isUser ? () => _editMessage(index) : null,
-                    onRegenerate: !message.isUser &&
-                        isLastMessage &&
-                        !provider.isGenerating
-                        ? _regenerateLastResponse
-                        : null,
-                  ),
+                child: Icon(
+                  message.isUser ? Icons.person : Icons.smart_toy,
+                  size: 14,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                message.isUser ? 'You' : (provider.selectedModel?.split(':').first ?? 'Assistant'),
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: widget.isDarkMode ? Colors.grey[300] : Colors.grey[800],
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                _formatTimestamp(message.timestamp),
+                style: TextStyle(fontSize: 9, color: Colors.grey[600]),
+              ),
+              if (!message.isUser &&
+                  message.thinkingText != null &&
+                  message.thinkingText!.isNotEmpty) ...[
+                const SizedBox(width: 6),
+                Icon(
+                  Icons.psychology,
+                  size: 12,
+                  color: Colors.orange[400],
                 ),
               ],
-            ),
+            ],
+          ),
+          const SizedBox(height: 6),
+
+          // Message bubble takes full width
+          MessageBubble(
+            message: message,
+            isDarkMode: widget.isDarkMode,
+            useFullWidth: true, // Enable full-width mode for mini mode
+            onEdit: message.isUser ? () => _editMessage(index) : null,
+            onRegenerate: !message.isUser &&
+                isLastMessage &&
+                !provider.isGenerating
+                ? _regenerateLastResponse
+                : null,
           ),
         ],
       ),
@@ -830,8 +603,8 @@ class _MiniModeScreenState extends State<MiniModeScreen> with TickerProviderStat
                 controller: _controller,
                 focusNode: _inputFocusNode,
                 decoration: InputDecoration(
-                  hintText: 'Quick message...',
-                  hintStyle: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                  hintText: 'Type a message...',
+                  hintStyle: TextStyle(fontSize: 13, color: Colors.grey[500]),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                     borderSide: BorderSide(
@@ -854,7 +627,7 @@ class _MiniModeScreenState extends State<MiniModeScreen> with TickerProviderStat
                   ),
                   isDense: true,
                 ),
-                style: const TextStyle(fontSize: 12),
+                style: const TextStyle(fontSize: 13),
                 maxLines: null,
                 textInputAction: TextInputAction.send,
                 onSubmitted: (_) => provider.isGenerating ? null : _sendMessage(),

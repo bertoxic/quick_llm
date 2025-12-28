@@ -16,6 +16,7 @@ class MessageBubble extends StatefulWidget {
   final bool isDarkMode;
   final VoidCallback? onEdit;
   final VoidCallback? onRegenerate;
+  final bool useFullWidth; // New parameter for mini mode
 
   const MessageBubble({
     super.key,
@@ -23,6 +24,7 @@ class MessageBubble extends StatefulWidget {
     required this.isDarkMode,
     this.onEdit,
     this.onRegenerate,
+    this.useFullWidth = false, // Default to false for backward compatibility
   });
 
   @override
@@ -34,6 +36,19 @@ class _MessageBubbleState extends State<MessageBubble> {
 
   @override
   Widget build(BuildContext context) {
+    // If using full width, skip the Row wrapper and constraints
+    if (widget.useFullWidth) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: _buildBubbleDecoration(),
+          child: _buildBubbleContent(),
+        ),
+      );
+    }
+
+    // Original behavior for non-mini mode
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
@@ -48,48 +63,52 @@ class _MessageBubbleState extends State<MessageBubble> {
               ),
               padding: const EdgeInsets.all(12),
               decoration: _buildBubbleDecoration(),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (widget.message.attachedFiles?.isNotEmpty ?? false)
-                    FileAttachmentsWidget(
-                      files: widget.message.attachedFiles!,
-                      isDarkMode: widget.isDarkMode,
-                    ),
-                  if (!widget.message.isUser && widget.message.thinkingText != null)
-                    ThinkingSectionWidget(
-                      thinkingText: widget.message.thinkingText!,
-                      isThinking: widget.message.isThinking,
-                      isDarkMode: widget.isDarkMode,
-                      showThinking: _showThinking,
-                      onToggle: () => setState(() => _showThinking = !_showThinking),
-                    ),
-                  if (widget.message.text.isNotEmpty)
-                    MarkdownContentWidget(
-                      text: widget.message.text,
-                      isUser: widget.message.isUser,
-                      isDarkMode: widget.isDarkMode,
-                    ),
-                  const SizedBox(height: 4),
-                  MessageMetadataWidget(
-                    timestamp: widget.message.timestamp,
-                    modelName: widget.message.modelName,
-                    isUser: widget.message.isUser,
-                    isDarkMode: widget.isDarkMode,
-                  ),
-                  if (!widget.message.isUser || widget.onEdit != null)
-                    MessageActionButtons(
-                      text: widget.message.text,
-                      onEdit: widget.onEdit,
-                      onRegenerate: widget.onRegenerate,
-                    ),
-                ],
-              ),
+              child: _buildBubbleContent(),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildBubbleContent() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (widget.message.attachedFiles?.isNotEmpty ?? false)
+          FileAttachmentsWidget(
+            files: widget.message.attachedFiles!,
+            isDarkMode: widget.isDarkMode,
+          ),
+        if (!widget.message.isUser && widget.message.thinkingText != null)
+          ThinkingSectionWidget(
+            thinkingText: widget.message.thinkingText!,
+            isThinking: widget.message.isThinking,
+            isDarkMode: widget.isDarkMode,
+            showThinking: _showThinking,
+            onToggle: () => setState(() => _showThinking = !_showThinking),
+          ),
+        if (widget.message.text.isNotEmpty)
+          MarkdownContentWidget(
+            text: widget.message.text,
+            isUser: widget.message.isUser,
+            isDarkMode: widget.isDarkMode,
+          ),
+        const SizedBox(height: 4),
+        MessageMetadataWidget(
+          timestamp: widget.message.timestamp,
+          modelName: widget.message.modelName,
+          isUser: widget.message.isUser,
+          isDarkMode: widget.isDarkMode,
+        ),
+        if (!widget.message.isUser || widget.onEdit != null)
+          MessageActionButtons(
+            text: widget.message.text,
+            onEdit: widget.onEdit,
+            onRegenerate: widget.onRegenerate,
+          ),
+      ],
     );
   }
 
