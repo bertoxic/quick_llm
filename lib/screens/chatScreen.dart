@@ -60,7 +60,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
   bool _copyFileAttachments = true;
   bool _shouldStopGeneration = false;
   StreamSubscription? _currentStreamSubscription;
-
+  Timer? _generationUpdateTimer;
   @override
   void initState() {
     super.initState();
@@ -73,6 +73,9 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
 
     windowManager.addListener(this);
     _initializeApp();
+
+    // Start monitoring generation state
+    _startGenerationMonitor();
   }
 
   Future<void> _initializeApp() async {
@@ -85,6 +88,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
 
   @override
   void dispose() {
+    _generationUpdateTimer?.cancel();
     _currentStreamSubscription?.cancel();
     windowManager.removeListener(this);
     _controller.dispose();
@@ -96,6 +100,30 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
     super.dispose();
   }
 
+  void _startGenerationMonitor() {
+    _generationUpdateTimer = Timer.periodic(
+      const Duration(milliseconds: 100), // Check every 100ms
+          (timer) {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+
+        final provider = context.read<ChatProvider>();
+
+        // If generating and not in mini mode, ensure UI updates
+        if (provider.isGenerating && !_isMiniMode) {
+          // Trigger a setState to update UI
+          setState(() {});
+
+          // Auto-scroll if enabled
+          if (_scrollHelper.isAutoScrollEnabled) {
+            _scrollHelper.scrollToBottom();
+          }
+        }
+      },
+    );
+  }
   void _setupScrollListener() {
     _scrollHelper.setupListener(
       onUserScrolledUp: () {
@@ -255,6 +283,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
       systemPrompt: provider.useSystemPrompt ? provider.systemPrompt : null,
       temperature: provider.temperature,
       maxTokens: provider.maxTokens,
+      numCtx: provider.nu,
       images: fileTypes.images,
       documents: fileTypes.documents,
     );
@@ -569,6 +598,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
           _savePreferences();
         },
         isDarkMode: widget.isDarkMode,
+        numCtx: provider.nu, onNumCtxChanged: (int p1) { provider.setNumCtx(p1); },
       ),
     );
   }
@@ -819,19 +849,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
           return MiniModeScreen(
             isDarkMode: widget.isDarkMode,
             availableModels: _availableModels,
-            onExitMiniMode: () async {
-              try {
-                setState(() {
-                  _isMiniMode = false;
-                });
-                await windowManager.setSize(const Size(1000, 700));
-                if (!_isAlwaysOnTop) {
-                  await windowManager.setAlwaysOnTop(false);
-                }
-              } catch (e) {
-                debugPrint('Error exiting mini mode: $e');
-              }
-            },
+            onExitMiniMode: _onExitMiniMode,
           );
         }
 
@@ -974,6 +992,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
                           final message = provider.messages[index];
                           return MessageBubble(
                             message: message,
+                            useFullWidth: false,
                             isDarkMode: widget.isDarkMode,
                             onEdit: message.isUser ? () => _editMessage(index) : null,
                             onRegenerate: !message.isUser &&
@@ -1004,5 +1023,49 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
       },
     );
   }
+  void _onExitMiniMode() async {
+    final provider = context.read<ChatProvider>();
+
+    try {
+      // Store generation state before switching
+      final wasGenerating = provider.isGenerating;
+      final generatingIndex = provider.generatingConversationIndex;
+
+      setState(() {
+        _isMiniMode = false;
+      });
+
+      // Wait for window resize to complete
+      await windowManager.setSize(const Size(1000, 700));
+      if (!_isAlwaysOnTop) {
+        await windowManager.setAlwaysOnTop(false);
+      }
+
+      // Small delay to let UI settle
+      await Future.delayed(const Duration(milliseconds: 150));
+
+      // Reload the current conversation to ensure sync
+      if (provider.selectedConversationIndex != null) {
+        _loadConversation(provider.selectedConversationIndex!, isRightPane: false);
+      }
+
+      // If generation was active, ensure monitoring continues
+      if (wasGenerating) {
+        debugPrint('🔄 Generation continuing after mode switch');
+        // Ensure generation monitor is active
+        if (_generationUpdateTimer == null || !_generationUpdateTimer!.isActive) {
+          _startGenerationMonitor();
+        }
+        // Force immediate update
+        setState(() {});
+        _scrollHelper.scrollToBottom();
+      }
+
+      debugPrint('✅ Exited mini mode successfully (generation: ${wasGenerating ? "continues" : "none"})');
+    } catch (e) {
+      debugPrint('Error exiting mini mode: $e');
+    }
+  }
+
 }
 

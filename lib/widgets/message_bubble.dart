@@ -16,7 +16,7 @@ class MessageBubble extends StatefulWidget {
   final bool isDarkMode;
   final VoidCallback? onEdit;
   final VoidCallback? onRegenerate;
-  final bool useFullWidth; // New parameter for mini mode
+  final bool useFullWidth;
 
   const MessageBubble({
     super.key,
@@ -24,7 +24,7 @@ class MessageBubble extends StatefulWidget {
     required this.isDarkMode,
     this.onEdit,
     this.onRegenerate,
-    this.useFullWidth = false, // Default to false for backward compatibility
+    this.useFullWidth = false,
   });
 
   @override
@@ -36,33 +36,50 @@ class _MessageBubbleState extends State<MessageBubble> {
 
   @override
   Widget build(BuildContext context) {
-    // If using full width, skip the Row wrapper and constraints
+    // Get theme colors
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final screenWidth = MediaQuery.of(context).size.width;
+
     if (widget.useFullWidth) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: Container(
           padding: const EdgeInsets.all(12),
-          decoration: _buildBubbleDecoration(),
+          decoration: _buildBubbleDecoration(colorScheme),
           child: _buildBubbleContent(),
         ),
       );
     }
 
-    // Original behavior for non-mini mode
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         mainAxisAlignment: widget.message.isUser
             ? MainAxisAlignment.end
-            : MainAxisAlignment.start,
+            : MainAxisAlignment.center, // Center the assistant message
         children: [
-          Flexible(
+          // For user messages, wrap content dynamically with max constraint
+          // For assistant messages, use flexible width
+          widget.message.isUser
+              ? Flexible(
             child: Container(
               constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.75,
+                maxWidth: screenWidth * 0.4,
               ),
               padding: const EdgeInsets.all(12),
-              decoration: _buildBubbleDecoration(),
+              decoration: _buildBubbleDecoration(colorScheme),
+              child: _buildBubbleContent(),
+            ),
+          )
+              : Flexible(
+            child: Container(
+              constraints: BoxConstraints(
+                maxWidth: screenWidth * 0.9,
+                minWidth: 100,
+              ),
+              padding: const EdgeInsets.all(12),
+              decoration: _buildBubbleDecoration(colorScheme),
               child: _buildBubbleContent(),
             ),
           ),
@@ -112,13 +129,20 @@ class _MessageBubbleState extends State<MessageBubble> {
     );
   }
 
-  BoxDecoration _buildBubbleDecoration() {
-    return BoxDecoration(
-      color: widget.message.isUser
-          ? (widget.isDarkMode ? const Color(0xFF1E3A8A) : const Color(0xFFDEEBFF))
-          : (widget.isDarkMode ? const Color(0xFF2A2A2A) : Colors.grey[300]),
-      borderRadius: BorderRadius.circular(12),
-    );
+  BoxDecoration _buildBubbleDecoration(ColorScheme colorScheme) {
+    if (widget.message.isUser) {
+      // User message - use primary color variants
+      return BoxDecoration(
+        color: colorScheme.primaryContainer,
+        borderRadius: BorderRadius.circular(12),
+      );
+    } else {
+      // AI message - use surface variants
+      return BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withOpacity(0.01),
+        borderRadius: BorderRadius.circular(12),
+      );
+    }
   }
 }
 
@@ -140,7 +164,8 @@ class MarkdownContentWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textColor = isDarkMode ? Colors.white : Colors.black87;
+    final theme = Theme.of(context);
+    final textColor = theme.colorScheme.onSurface;
 
     return MarkdownWidget(
       data: text,
@@ -149,18 +174,27 @@ class MarkdownContentWidget extends StatelessWidget {
       padding: EdgeInsets.zero,
       config: MarkdownConfig(
         configs: [
-          const PConfig(textStyle: TextStyle(fontSize: 14, height: 1.5)),
+          PConfig(
+            textStyle: TextStyle(
+              fontSize: 14,
+              height: 1.5,
+              color: textColor,
+            ),
+          ),
           ..._buildHeadingConfigs(textColor),
-          _buildCodeConfig(),
-          _buildPreConfig(context),
-          _buildBlockquoteConfig(),
-          _buildLinkConfig(context),
+          _buildCodeConfig(theme),
+          _buildPreConfig(context, theme),
+          _buildBlockquoteConfig(theme),
+          _buildLinkConfig(context, theme),
           HrConfig(
             height: 1,
-            color: isDarkMode ? Colors.grey.shade600 : Colors.grey.shade300,
+            color: theme.dividerColor,
           ),
-          _buildImageConfig(),
-          ListConfig(marker: (isOrdered, depth, index) => _buildListMarker(isOrdered, index, textColor)),
+          _buildImageConfig(theme),
+          ListConfig(
+            marker: (isOrdered, depth, index) =>
+                _buildListMarker(isOrdered, index, textColor),
+          ),
         ],
       ),
     );
@@ -177,35 +211,28 @@ class MarkdownContentWidget extends StatelessWidget {
     ];
   }
 
-  CodeConfig _buildCodeConfig() {
+  CodeConfig _buildCodeConfig(ThemeData theme) {
     return CodeConfig(
       style: TextStyle(
         fontSize: 13,
-        backgroundColor: isDarkMode ? const Color(0xFF2D2D2D) : const Color(0xFFF5F5F5),
-        color: isDarkMode ? const Color(0xFFDD5353) : const Color(0xFF9E3B3B),
+        backgroundColor: theme.colorScheme.surfaceContainerHighest,
+        color: theme.colorScheme.error,
         fontFamily: 'monospace',
         fontWeight: FontWeight.w600,
-        shadows: [
-          Shadow(
-            color: isDarkMode ? const Color(0xFF070707) : const Color(0xFFE0E0E0),
-            blurRadius: 4,
-            offset: const Offset(2, 3),
-          ),
-        ],
       ),
     );
   }
 
-  PreConfig _buildPreConfig(BuildContext context) {
+  PreConfig _buildPreConfig(BuildContext context, ThemeData theme) {
     return PreConfig(
       theme: isDarkMode ? atomOneDarkTheme : atomOneLightTheme,
       padding: const EdgeInsets.all(12),
       margin: const EdgeInsets.symmetric(vertical: 8),
       decoration: BoxDecoration(
-        color: isDarkMode ? Colors.grey[900] : Colors.grey[100],
+        color: theme.colorScheme.surfaceContainer,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
-          color: isDarkMode ? Colors.grey[700]! : Colors.grey[400]!,
+          color: theme.dividerColor,
           width: 1,
         ),
       ),
@@ -218,20 +245,20 @@ class MarkdownContentWidget extends StatelessWidget {
     );
   }
 
-  BlockquoteConfig _buildBlockquoteConfig() {
+  BlockquoteConfig _buildBlockquoteConfig(ThemeData theme) {
     return BlockquoteConfig(
-      textColor: isDarkMode ? Colors.white70 : Colors.black54,
-      sideColor: isDarkMode ? Colors.white60 : Colors.black45,
+      textColor: theme.colorScheme.onSurface.withOpacity(0.7),
+      sideColor: theme.colorScheme.primary,
       sideWith: 4.0,
       padding: const EdgeInsets.fromLTRB(16, 2, 0, 2),
       margin: const EdgeInsets.fromLTRB(0, 8, 0, 8),
     );
   }
 
-  LinkConfig _buildLinkConfig(BuildContext context) {
+  LinkConfig _buildLinkConfig(BuildContext context, ThemeData theme) {
     return LinkConfig(
       style: TextStyle(
-        color: isDarkMode ? Colors.blue[300] : Colors.blue[700],
+        color: theme.colorScheme.primary,
         decoration: TextDecoration.underline,
         fontSize: 14,
       ),
@@ -258,37 +285,46 @@ class MarkdownContentWidget extends StatelessWidget {
 
   void _showSnackBar(BuildContext context, String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.red[700]),
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Theme.of(context).colorScheme.error,
+      ),
     );
   }
 
-  ImgConfig _buildImageConfig() {
+  ImgConfig _buildImageConfig(ThemeData theme) {
     return ImgConfig(
       builder: (url, attributes) => Container(
         margin: const EdgeInsets.symmetric(vertical: 8),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: isDarkMode ? Colors.grey[700]! : Colors.grey[400]!),
+          border: Border.all(color: theme.dividerColor),
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(8),
           child: Image.network(
             url,
-            errorBuilder: (context, error, stackTrace) => _buildImageError(),
+            errorBuilder: (context, error, stackTrace) => _buildImageError(theme),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildImageError() {
+  Widget _buildImageError(ThemeData theme) {
     return Container(
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          Icon(Icons.broken_image, color: Colors.grey[600]),
+          Icon(Icons.broken_image, color: theme.colorScheme.error),
           const SizedBox(height: 8),
-          Text('Failed to load image', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+          Text(
+            'Failed to load image',
+            style: TextStyle(
+              color: theme.colorScheme.onSurface.withOpacity(0.6),
+              fontSize: 12,
+            ),
+          ),
         ],
       ),
     );
@@ -359,6 +395,9 @@ class _CopyCodeButtonState extends State<CopyCodeButton> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -367,9 +406,9 @@ class _CopyCodeButtonState extends State<CopyCodeButton> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
           decoration: BoxDecoration(
-            color: (widget.isDarkMode ? Colors.grey[800] : Colors.grey[200])!.withOpacity(0.9),
+            color: colorScheme.surfaceContainerHighest.withOpacity(0.9),
             borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: widget.isDarkMode ? Colors.grey[700]! : Colors.grey[400]!),
+            border: Border.all(color: theme.dividerColor),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -377,14 +416,14 @@ class _CopyCodeButtonState extends State<CopyCodeButton> {
               Icon(
                 _copied ? Icons.check : Icons.copy,
                 size: 14,
-                color: _copied ? Colors.green : (widget.isDarkMode ? Colors.grey[300] : Colors.grey[700]),
+                color: _copied ? colorScheme.primary : colorScheme.onSurface,
               ),
               const SizedBox(width: 4),
               Text(
                 _copied ? 'Copied!' : 'Copy',
                 style: TextStyle(
                   fontSize: 11,
-                  color: _copied ? Colors.green : (widget.isDarkMode ? Colors.grey[300] : Colors.grey[700]),
+                  color: _copied ? colorScheme.primary : colorScheme.onSurface,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -460,7 +499,7 @@ class ImagePreviewWidget extends StatelessWidget {
     final file = File(filePath);
 
     if (!file.existsSync()) {
-      return _buildErrorPreview();
+      return _buildErrorPreview(context);
     }
 
     return GestureDetector(
@@ -472,29 +511,35 @@ class ImagePreviewWidget extends StatelessWidget {
           width: 150,
           height: 150,
           fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) => _buildErrorPreview(),
+          errorBuilder: (context, error, stackTrace) => _buildErrorPreview(context),
         ),
       ),
     );
   }
 
-  Widget _buildErrorPreview() {
+  Widget _buildErrorPreview(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Container(
       width: 150,
       height: 150,
       decoration: BoxDecoration(
-        color: Colors.red[100],
+        color: colorScheme.errorContainer,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.red[300]!),
+        border: Border.all(color: colorScheme.error),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.error_outline, size: 40, color: Colors.red[700]),
+          Icon(Icons.error_outline, size: 40, color: colorScheme.error),
           const SizedBox(height: 4),
-          const Padding(
-            padding: EdgeInsets.all(8.0),
-            child: Text('File not found', style: TextStyle(fontSize: 10), textAlign: TextAlign.center),
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Text(
+              'File not found',
+              style: TextStyle(fontSize: 10, color: colorScheme.onErrorContainer),
+              textAlign: TextAlign.center,
+            ),
           ),
         ],
       ),
@@ -525,12 +570,15 @@ class DocumentPreviewWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: isDarkMode ? Colors.grey[700] : Colors.grey[200],
+        color: colorScheme.surfaceContainer,
         borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: isDarkMode ? Colors.grey[600]! : Colors.grey[400]!),
+        border: Border.all(color: theme.dividerColor),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -539,7 +587,11 @@ class DocumentPreviewWidget extends StatelessWidget {
           const SizedBox(width: 8),
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 150),
-            child: Text(fileName, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
+            child: Text(
+              fileName,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 12, color: colorScheme.onSurface),
+            ),
           ),
         ],
       ),
@@ -577,13 +629,16 @@ class ThinkingSectionWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: isDarkMode ? Colors.grey[800] : Colors.grey[200],
+        color: colorScheme.surfaceContainer,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: isDarkMode ? Colors.grey[700]! : Colors.grey[300]!),
+        border: Border.all(color: theme.dividerColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -592,13 +647,17 @@ class ThinkingSectionWidget extends StatelessWidget {
             onTap: onToggle,
             child: Row(
               children: [
-                Icon(showThinking ? Icons.expand_less : Icons.expand_more, size: 16, color: Colors.grey[600]),
+                Icon(
+                  showThinking ? Icons.expand_less : Icons.expand_more,
+                  size: 16,
+                  color: colorScheme.onSurface.withOpacity(0.6),
+                ),
                 const SizedBox(width: 4),
                 Text(
                   isThinking ? 'Thinking...' : 'View thinking process',
                   style: TextStyle(
                     fontSize: 12,
-                    color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                    color: colorScheme.onSurface.withOpacity(0.6),
                     fontStyle: FontStyle.italic,
                   ),
                 ),
@@ -610,7 +669,7 @@ class ThinkingSectionWidget extends StatelessWidget {
                       height: 12,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                        color: colorScheme.primary,
                       ),
                     ),
                   ),
@@ -623,7 +682,7 @@ class ThinkingSectionWidget extends StatelessWidget {
               thinkingText,
               style: TextStyle(
                 fontSize: 12,
-                color: isDarkMode ? Colors.grey[400] : Colors.grey[700],
+                color: colorScheme.onSurface.withOpacity(0.7),
                 fontStyle: FontStyle.italic,
               ),
             ),
@@ -654,6 +713,8 @@ class MessageMetadataWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final textColor = Theme.of(context).colorScheme.onSurface.withOpacity(0.6);
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -661,7 +722,7 @@ class MessageMetadataWidget extends StatelessWidget {
           _formatTimestamp(timestamp),
           style: TextStyle(
             fontSize: 10,
-            color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+            color: textColor,
           ),
         ),
         if (!isUser && modelName != null) ...[
@@ -669,7 +730,7 @@ class MessageMetadataWidget extends StatelessWidget {
           Flexible(
             child: Text(
               '• $modelName',
-              style: TextStyle(fontSize: 10, color: Colors.grey[600]),
+              style: TextStyle(fontSize: 10, color: textColor),
               overflow: TextOverflow.ellipsis,
             ),
           ),

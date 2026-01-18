@@ -3,7 +3,7 @@ import 'package:quick_llm/widgets/typing_indicaator.dart';
 import '../models/conversation.dart';
 import '../utils/date_formatter.dart';
 
-/// Enhanced sidebar with split screen drag-and-drop support
+/// Enhanced sidebar with theme-based colors
 class Sidebar extends StatefulWidget {
   final bool isDarkMode;
   final List<Conversation> conversations;
@@ -40,77 +40,54 @@ class Sidebar extends StatefulWidget {
   State<Sidebar> createState() => _SidebarState();
 }
 
-class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
+class _SidebarState extends State<Sidebar> with SingleTickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
   String _searchQuery = '';
-  bool _isSearching = false;
   bool _isConversationsExpanded = true;
   bool _isSettingsExpanded = true;
-  late AnimationController _conversationsAnimController;
-  late AnimationController _settingsAnimController;
-  int? _draggedIndex;
+  late AnimationController _animController;
 
   @override
   void initState() {
     super.initState();
-    _conversationsAnimController = AnimationController(
+    _animController = AnimationController(
       duration: const Duration(milliseconds: 300),
       vsync: this,
-      value: 1.0,
-    );
-    _settingsAnimController = AnimationController(
-      duration: const Duration(milliseconds: 300),
-      vsync: this,
-      value: 1.0,
     );
   }
 
   @override
   void dispose() {
     _scrollController.dispose();
-    _conversationsAnimController.dispose();
-    _settingsAnimController.dispose();
+    _animController.dispose();
     super.dispose();
   }
 
   void _toggleConversations() {
-    setState(() {
-      _isConversationsExpanded = !_isConversationsExpanded;
-      if (_isConversationsExpanded) {
-        _conversationsAnimController.forward();
-      } else {
-        _conversationsAnimController.reverse();
-      }
-    });
+    setState(() => _isConversationsExpanded = !_isConversationsExpanded);
   }
 
   void _toggleSettings() {
-    setState(() {
-      _isSettingsExpanded = !_isSettingsExpanded;
-      if (_isSettingsExpanded) {
-        _settingsAnimController.forward();
-      } else {
-        _settingsAnimController.reverse();
-      }
-    });
+    setState(() => _isSettingsExpanded = !_isSettingsExpanded);
   }
 
   void _showAboutDialog() {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     showDialog(
       context: context,
-      builder: (BuildContext context) => AlertDialog(
+      builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Colors.blue[400]!, Colors.purple[400]!],
-                ),
+                color: colorScheme.primaryContainer,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(Icons.info_outline, color: Colors.white, size: 24),
+              child: Icon(Icons.info_outline, color: colorScheme.onPrimaryContainer, size: 24),
             ),
             const SizedBox(width: 12),
             const Text('About Quick LLM'),
@@ -125,24 +102,37 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
               style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w600,
-                color: widget.isDarkMode ? Colors.blue[300] : Colors.blue[700],
+                color: colorScheme.primary,
               ),
             ),
             const SizedBox(height: 16),
             Text(
               'A fast and efficient LLM chat interface built with Flutter.',
-              style: TextStyle(fontSize: 14, color: Colors.grey[600], height: 1.5),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+                height: 1.5,
+              ),
             ),
             const SizedBox(height: 16),
-            Divider(color: Colors.grey[300]),
+            Divider(color: colorScheme.outlineVariant),
             const SizedBox(height: 12),
-            _buildAboutRow(Icons.code, 'Built with Flutter'),
-            const SizedBox(height: 8),
-            _buildAboutRow(Icons.chat_bubble_outline, 'AI-Powered Conversations'),
-            const SizedBox(height: 8),
-            _buildAboutRow(Icons.security, 'Privacy-Focused'),
-            const SizedBox(height: 8),
-            _buildAboutRow(Icons.splitscreen, 'Split Screen Support'),
+            ...[
+              (Icons.code, 'Built with Flutter'),
+              (Icons.chat_bubble_outline, 'AI-Powered Conversations'),
+              (Icons.security, 'Privacy-Focused'),
+              (Icons.splitscreen, 'Split Screen Support'),
+            ].map((item) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  Icon(item.$1, size: 16, color: colorScheme.onSurfaceVariant),
+                  const SizedBox(width: 8),
+                  Text(item.$2, style: theme.textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurface,
+                  )),
+                ],
+              ),
+            )),
           ],
         ),
         actions: [
@@ -156,19 +146,22 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
   }
 
   void _showClearAllDialog() {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     showDialog(
       context: context,
-      builder: (BuildContext context) => AlertDialog(
+      builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: Colors.red[100],
+                color: colorScheme.errorContainer,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Icon(Icons.warning_amber_rounded, color: Colors.red[700], size: 24),
+              child: Icon(Icons.warning_amber_rounded, color: colorScheme.error, size: 24),
             ),
             const SizedBox(width: 12),
             const Text('Clear All Conversations?'),
@@ -180,28 +173,25 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
           children: [
             Text(
               'This will permanently delete all ${widget.conversations.length} conversation${widget.conversations.length != 1 ? 's' : ''}.',
-              style: const TextStyle(fontSize: 14, height: 1.5),
+              style: theme.textTheme.bodyMedium,
             ),
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: widget.isDarkMode ? Colors.red[900]!.withOpacity(0.2) : Colors.red[50],
+                color: colorScheme.errorContainer,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: widget.isDarkMode ? Colors.red[800]! : Colors.red[200]!,
-                ),
+                border: Border.all(color: colorScheme.error),
               ),
               child: Row(
                 children: [
-                  Icon(Icons.info_outline, size: 16, color: Colors.red[700]),
+                  Icon(Icons.info_outline, size: 16, color: colorScheme.error),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       'This action cannot be undone.',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.red[700],
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.error,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -222,8 +212,8 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
               widget.onClearAllConversations();
             },
             style: FilledButton.styleFrom(
-              backgroundColor: Colors.red[600],
-              foregroundColor: Colors.white,
+              backgroundColor: colorScheme.error,
+              foregroundColor: colorScheme.onError,
             ),
             child: const Text('Clear All'),
           ),
@@ -233,21 +223,22 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
   }
 
   void _showSplitModeDialog(int draggedIndex) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     showDialog(
       context: context,
-      builder: (BuildContext context) => AlertDialog(
+      builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Colors.blue[400]!, Colors.purple[400]!],
-                ),
+                color: colorScheme.primaryContainer,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(Icons.splitscreen, color: Colors.white, size: 24),
+              child: Icon(Icons.splitscreen, color: colorScheme.onPrimaryContainer, size: 24),
             ),
             const SizedBox(width: 12),
             const Text('Enable Split Mode'),
@@ -259,48 +250,51 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
           children: [
             Text(
               'Choose a conversation to compare with:',
-              style: TextStyle(fontSize: 14, color: Colors.grey[700]),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
             ),
             const SizedBox(height: 16),
-            Container(
-              constraints: const BoxConstraints(maxHeight: 300),
-              child: SingleChildScrollView(
-                child: Column(
-                  children: widget.conversations.asMap().entries.where((entry) {
-                    return entry.key != draggedIndex;
-                  }).map((entry) {
-                    final index = entry.key;
-                    final conv = entry.value;
-                    return ListTile(
-                      leading: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: widget.isDarkMode ? Colors.blue[900]!.withOpacity(0.3) : Colors.blue[100],
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Icon(
-                          Icons.chat_bubble_outline,
-                          size: 20,
-                          color: widget.isDarkMode ? Colors.blue[300] : Colors.blue[700],
-                        ),
+            SizedBox(
+              width: double.maxFinite,
+              height: 300,
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: widget.conversations.length - 1,
+                itemBuilder: (context, i) {
+                  final index = i >= draggedIndex ? i + 1 : i;
+                  final conv = widget.conversations[index];
+                  return ListTile(
+                    leading: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: colorScheme.primaryContainer,
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                      title: Text(
-                        conv.title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 14),
+                      child: Icon(
+                        Icons.chat_bubble_outline,
+                        size: 20,
+                        color: colorScheme.onPrimaryContainer,
                       ),
-                      subtitle: Text(
-                        DateFormatter.formatTimestamp(conv.timestamp),
-                        style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                    ),
+                    title: Text(
+                      conv.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                    subtitle: Text(
+                      DateFormatter.formatTimestamp(conv.timestamp),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
                       ),
-                      onTap: () {
-                        Navigator.of(context).pop();
-                        widget.onEnableSplitMode?.call(draggedIndex, index);
-                      },
-                    );
-                  }).toList(),
-                ),
+                    ),
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      widget.onEnableSplitMode?.call(draggedIndex, index);
+                    },
+                  );
+                },
               ),
             ),
           ],
@@ -315,38 +309,22 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildAboutRow(IconData icon, String text) {
-    return Row(
-      children: [
-        Icon(icon, size: 16, color: Colors.grey[600]),
-        const SizedBox(width: 8),
-        Text(
-          text,
-          style: TextStyle(fontSize: 13, color: Colors.grey[700]),
-        ),
-      ],
-    );
-  }
-
   List<Conversation> get _filteredConversations {
     if (_searchQuery.isEmpty) return widget.conversations;
-    return widget.conversations
-        .where((conv) => conv.title.toLowerCase().contains(_searchQuery.toLowerCase()))
-        .toList();
+    final query = _searchQuery.toLowerCase();
+    return widget.conversations.where((conv) => conv.title.toLowerCase().contains(query)).toList();
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Container(
       width: 260,
       decoration: BoxDecoration(
-        color: _getBackgroundColor(),
-        border: Border(
-          right: BorderSide(
-            color: _getBorderColor(),
-            width: 1,
-          ),
-        ),
+        color: colorScheme.surface,
+        border: Border(right: BorderSide(color: colorScheme.outlineVariant)),
       ),
       child: Column(
         children: [
@@ -358,35 +336,26 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
     );
   }
 
-  /// Enhanced header with gradient and new chat button
   Widget _buildHeader() {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Container(
       padding: const EdgeInsets.all(16.0),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: widget.isDarkMode
-              ? [Colors.blue[900]!.withOpacity(0.3), Colors.purple[900]!.withOpacity(0.2)]
-              : [Colors.blue[50]!, Colors.purple[50]!],
-        ),
+        color: colorScheme.primaryContainer.withOpacity(0.3),
       ),
       child: Column(
         children: [
           ElevatedButton.icon(
             onPressed: widget.onNewChat,
             icon: const Icon(Icons.add_rounded, size: 22),
-            label: const Text(
-              'New Chat',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-            ),
+            label: const Text('New Chat', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
             style: ElevatedButton.styleFrom(
               minimumSize: const Size(double.infinity, 48),
-              foregroundColor: Colors.white,
-              backgroundColor: widget.isDarkMode ? Colors.blue[700] : Colors.blue[600],
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              foregroundColor: colorScheme.onPrimary,
+              backgroundColor: colorScheme.primary,
               elevation: 2,
-              shadowColor: Colors.blue.withOpacity(0.4),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
           ),
@@ -396,27 +365,21 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
-                  color: widget.isDarkMode ? Colors.green[900]!.withOpacity(0.3) : Colors.green[100],
+                  color: colorScheme.tertiaryContainer,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: widget.isDarkMode ? Colors.green[700]! : Colors.green[300]!,
-                  ),
+                  border: Border.all(color: colorScheme.tertiary),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
-                      Icons.splitscreen,
-                      size: 16,
-                      color: widget.isDarkMode ? Colors.green[300] : Colors.green[700],
-                    ),
+                    Icon(Icons.splitscreen, size: 16, color: colorScheme.onTertiaryContainer),
                     const SizedBox(width: 8),
                     Text(
                       'Split Mode Active',
                       style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: widget.isDarkMode ? Colors.green[300] : Colors.green[700],
+                        color: colorScheme.onTertiaryContainer,
                       ),
                     ),
                   ],
@@ -428,11 +391,9 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
     );
   }
 
-  /// Collapsible conversations section
   Widget _buildConversationsSection() {
     return Expanded(
       child: Column(
-        mainAxisSize: MainAxisSize.min,
         children: [
           _buildSectionHeader(
             title: 'Conversations',
@@ -444,22 +405,18 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
           if (_isConversationsExpanded)
             Expanded(
               child: Column(
-                mainAxisSize: MainAxisSize.min,
                 children: [
                   if (widget.conversations.length > 5) _buildSearchBar(),
-                  // Drag hint
                   if (widget.onEnableSplitMode != null && !widget.isSplitMode)
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       child: Container(
                         padding: const EdgeInsets.all(8),
                         decoration: BoxDecoration(
-                          color: widget.isDarkMode
-                              ? Colors.blue[900]!.withOpacity(0.2)
-                              : Colors.blue[50],
+                          color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5),
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(
-                            color: widget.isDarkMode ? Colors.blue[700]! : Colors.blue[200]!,
+                            color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
                           ),
                         ),
                         child: Row(
@@ -467,7 +424,7 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
                             Icon(
                               Icons.info_outline,
                               size: 14,
-                              color: widget.isDarkMode ? Colors.blue[300] : Colors.blue[700],
+                              color: Theme.of(context).colorScheme.primary,
                             ),
                             const SizedBox(width: 8),
                             Expanded(
@@ -475,7 +432,7 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
                                 'Long press & drag to split screen',
                                 style: TextStyle(
                                   fontSize: 11,
-                                  color: widget.isDarkMode ? Colors.blue[300] : Colors.blue[700],
+                                  color: Theme.of(context).colorScheme.primary,
                                 ),
                               ),
                             ),
@@ -494,7 +451,6 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
     );
   }
 
-  /// Section header with expand/collapse functionality
   Widget _buildSectionHeader({
     required String title,
     required IconData icon,
@@ -502,33 +458,32 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
     required bool isExpanded,
     required VoidCallback onToggle,
   }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Material(
-      color: widget.isDarkMode ? Colors.grey[850]!.withOpacity(0.5) : Colors.grey[100],
+      color: colorScheme.surfaceContainerHighest.withOpacity(0.5),
       child: InkWell(
         onTap: onToggle,
-        child: Container(
+        child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           child: Row(
             children: [
-              Icon(icon, size: 18, color: widget.isDarkMode ? Colors.blue[300] : Colors.blue[700]),
+              Icon(icon, size: 18, color: colorScheme.primary),
               const SizedBox(width: 10),
-              Text(
-                title,
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-              ),
+              Text(title, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
               const SizedBox(width: 6),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: widget.isDarkMode ? Colors.blue[900]!.withOpacity(0.3) : Colors.blue[100],
+                  color: colorScheme.primaryContainer,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
                   '$count',
-                  style: TextStyle(
-                    fontSize: 11,
+                  style: theme.textTheme.labelSmall?.copyWith(
                     fontWeight: FontWeight.w700,
-                    color: widget.isDarkMode ? Colors.blue[300] : Colors.blue[700],
+                    color: colorScheme.onPrimaryContainer,
                   ),
                 ),
               ),
@@ -536,11 +491,7 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
               AnimatedRotation(
                 turns: isExpanded ? 0.5 : 0,
                 duration: const Duration(milliseconds: 300),
-                child: Icon(
-                  Icons.keyboard_arrow_down_rounded,
-                  size: 20,
-                  color: Colors.grey[600],
-                ),
+                child: Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: colorScheme.onSurfaceVariant),
               ),
             ],
           ),
@@ -549,25 +500,29 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
     );
   }
 
-  /// Search bar for filtering conversations
   Widget _buildSearchBar() {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: TextField(
         onChanged: (value) => setState(() => _searchQuery = value),
         decoration: InputDecoration(
           hintText: 'Search conversations...',
-          hintStyle: TextStyle(fontSize: 13, color: Colors.grey[500]),
-          prefixIcon: Icon(Icons.search, size: 20, color: Colors.grey[600]),
+          hintStyle: theme.textTheme.bodySmall?.copyWith(
+            color: colorScheme.onSurfaceVariant,
+          ),
+          prefixIcon: Icon(Icons.search, size: 20, color: colorScheme.onSurfaceVariant),
           suffixIcon: _searchQuery.isNotEmpty
               ? IconButton(
-            icon: Icon(Icons.clear, size: 18, color: Colors.grey[600]),
+            icon: Icon(Icons.clear, size: 18, color: colorScheme.onSurfaceVariant),
             onPressed: () => setState(() => _searchQuery = ''),
             padding: EdgeInsets.zero,
           )
               : null,
           filled: true,
-          fillColor: widget.isDarkMode ? Colors.grey[850] : Colors.white,
+          fillColor: colorScheme.surfaceContainerHighest,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(10),
             borderSide: BorderSide.none,
@@ -575,13 +530,14 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           isDense: true,
         ),
-        style: const TextStyle(fontSize: 14),
+        style: theme.textTheme.bodyMedium,
       ),
     );
   }
 
-  /// Optimized conversation list with drag-and-drop
   Widget _buildConversationList() {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final filtered = _filteredConversations;
 
     if (filtered.isEmpty) {
@@ -590,9 +546,8 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
           padding: const EdgeInsets.all(24.0),
           child: Text(
             'No conversations found',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey[600],
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: colorScheme.onSurfaceVariant,
             ),
           ),
         ),
@@ -605,79 +560,19 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       itemBuilder: (context, index) {
         final actualIndex = widget.conversations.indexOf(filtered[index]);
-        return _buildDraggableConversationTile(actualIndex, filtered[index]);
+        return _buildConversationTile(actualIndex, filtered[index]);
       },
     );
   }
 
-  /// Enhanced draggable conversation tile
-  Widget _buildDraggableConversationTile(int index, Conversation conv) {
+  Widget _buildConversationTile(int index, Conversation conv) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final isSelected = widget.selectedConversationIndex == index;
     final isGenerating = widget.generatingConversationIndex == index;
+    final canDrag = widget.onEnableSplitMode != null && !widget.isSplitMode;
 
-    Widget tileContent = _buildConversationTileContent(index, conv, isSelected, isGenerating);
-
-    // Add drag functionality if split mode is available
-    if (widget.onEnableSplitMode != null && !widget.isSplitMode) {
-      return LongPressDraggable<int>(
-        data: index,
-        feedback: Material(
-          elevation: 8,
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            width: 240,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: widget.isDarkMode ? Colors.grey[800] : Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.blue, width: 2),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.blue.withOpacity(0.3),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.splitscreen, size: 18, color: Colors.blue[400]),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    conv.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        childWhenDragging: Opacity(
-          opacity: 0.3,
-          child: tileContent,
-        ),
-        onDragStarted: () {
-          setState(() => _draggedIndex = index);
-        },
-        onDragEnd: (details) {
-          setState(() => _draggedIndex = null);
-          // Always show the split mode dialog when drag ends
-          // This removes the dependency on wasAccepted or velocity checks
-          _showSplitModeDialog(index);
-        },
-        child: tileContent,
-      );
-    }
-
-    return tileContent;
-  }
-
-  /// Build the actual conversation tile content
-  Widget _buildConversationTileContent(int index, Conversation conv, bool isSelected, bool isGenerating) {
-    return Dismissible(
+    Widget tile = Dismissible(
       key: ValueKey(conv.timestamp),
       direction: DismissDirection.endToStart,
       background: Container(
@@ -685,104 +580,156 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
         padding: const EdgeInsets.only(right: 20),
         margin: const EdgeInsets.only(bottom: 6),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.red[400]!, Colors.red[600]!],
-          ),
+          color: colorScheme.error,
           borderRadius: BorderRadius.circular(12),
         ),
-        child: const Icon(Icons.delete_outline, color: Colors.white, size: 24),
+        child: Icon(Icons.delete_outline, color: colorScheme.onError, size: 24),
       ),
-      confirmDismiss: (direction) async {
-        return await showDialog(
-          context: context,
-          builder: (BuildContext context) => AlertDialog(
-            title: const Text('Delete Conversation'),
-            content: const Text('Are you sure you want to delete this conversation?'),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                style: FilledButton.styleFrom(backgroundColor: Colors.red),
-                child: const Text('Delete'),
-              ),
-            ],
-          ),
-        );
-      },
+      confirmDismiss: (direction) => _confirmDelete(),
       onDismissed: (_) => widget.onDeleteConversation(index),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        margin: const EdgeInsets.only(bottom: 6),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: () => widget.onLoadConversation(index),
-            borderRadius: BorderRadius.circular(12),
+      child: _buildTileContent(index, conv, isSelected, isGenerating, canDrag),
+    );
+
+    if (canDrag) {
+      return LongPressDraggable<int>(
+        data: index,
+        feedback: Material(
+          elevation: 8,
+          borderRadius: BorderRadius.circular(12),
+          child: SizedBox(
+            width: 240,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: isSelected
-                    ? (widget.isDarkMode ? Colors.blue[800]!.withOpacity(0.4) : Colors.blue[100])
-                    : (widget.isDarkMode ? Colors.grey[850]!.withOpacity(0.5) : Colors.white),
+                color: colorScheme.surface,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: isGenerating
-                      ? Colors.green.withOpacity(0.5)
-                      : (isSelected
-                      ? (widget.isDarkMode ? Colors.blue[600]! : Colors.blue[300]!)
-                      : Colors.transparent),
-                  width: isGenerating ? 2.0 : 1.5,
-                ),
-                boxShadow: isSelected || isGenerating
-                    ? [
+                border: Border.all(color: colorScheme.primary, width: 2),
+                boxShadow: [
                   BoxShadow(
-                    color: isGenerating
-                        ? Colors.green.withOpacity(0.2)
-                        : Colors.blue.withOpacity(0.2),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  )
-                ]
-                    : null,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      if (widget.onEnableSplitMode != null && !widget.isSplitMode)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: Icon(
-                            Icons.drag_indicator,
-                            size: 18,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                      Expanded(
-                        child: Text(
-                          conv.title,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                            height: 1.3,
-                          ),
-                        ),
-                      ),
-                      _buildQuickActions(index, conv),
-                    ],
+                    color: colorScheme.primary.withOpacity(0.3),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
                   ),
-                  const SizedBox(height: 8),
-                  _buildMetadata(conv),
-                  if (isGenerating) GeneratingIndicator(isDarkMode: widget.isDarkMode),
                 ],
               ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.splitscreen, size: 18, color: colorScheme.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      conv.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        childWhenDragging: Opacity(opacity: 0.3, child: tile),
+        onDragEnd: (details) => _showSplitModeDialog(index),
+        child: tile,
+      );
+    }
+
+    return tile;
+  }
+
+  Future<bool?> _confirmDelete() {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Conversation'),
+        content: const Text('Are you sure you want to delete this conversation?'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: FilledButton.styleFrom(
+              backgroundColor: colorScheme.error,
+              foregroundColor: colorScheme.onError,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTileContent(int index, Conversation conv, bool isSelected, bool isGenerating, bool showDragHandle) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      margin: const EdgeInsets.only(bottom: 6),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () => widget.onLoadConversation(index),
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? colorScheme.primaryContainer
+                  : colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isGenerating
+                    ? colorScheme.tertiary
+                    : (isSelected ? colorScheme.primary : Colors.transparent),
+                width: isGenerating ? 2.0 : 1.5,
+              ),
+              boxShadow: isSelected || isGenerating
+                  ? [
+                BoxShadow(
+                  color: (isGenerating ? colorScheme.tertiary : colorScheme.primary).withOpacity(0.2),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                )
+              ]
+                  : null,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    if (showDragHandle)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: Icon(Icons.drag_indicator, size: 18, color: colorScheme.onSurfaceVariant),
+                      ),
+                    Expanded(
+                      child: Text(
+                        conv.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                          height: 1.3,
+                          color: isSelected ? colorScheme.onPrimaryContainer : colorScheme.onSurface,
+                        ),
+                      ),
+                    ),
+                    _buildQuickActions(index, conv),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                _buildMetadata(conv),
+                if (isGenerating) GeneratingIndicator(isDarkMode: widget.isDarkMode),
+              ],
             ),
           ),
         ),
@@ -790,16 +737,20 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
     );
   }
 
-  /// Compact metadata row
   Widget _buildMetadata(Conversation conv) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Row(
       children: [
-        Icon(Icons.schedule_rounded, size: 12, color: Colors.grey[600]),
+        Icon(Icons.schedule_rounded, size: 12, color: colorScheme.onSurfaceVariant),
         const SizedBox(width: 4),
         Expanded(
           child: Text(
             DateFormatter.formatTimestamp(conv.timestamp),
-            style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
             overflow: TextOverflow.ellipsis,
           ),
         ),
@@ -807,18 +758,17 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
           decoration: BoxDecoration(
-            color: widget.isDarkMode ? Colors.grey[800] : Colors.grey[200],
+            color: colorScheme.surfaceContainerHigh,
             borderRadius: BorderRadius.circular(8),
           ),
           child: Row(
             children: [
-              Icon(Icons.chat_bubble_rounded, size: 10, color: Colors.grey[600]),
+              Icon(Icons.chat_bubble_rounded, size: 10, color: colorScheme.onSurfaceVariant),
               const SizedBox(width: 4),
               Text(
                 '${conv.messageCount}',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: Colors.grey[600],
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -829,42 +779,48 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
     );
   }
 
-  /// Quick action buttons
   Widget _buildQuickActions(int index, Conversation conv) {
-    return PopupMenuButton<String>(
-        icon: Icon(Icons.more_vert_rounded, size: 18, color: Colors.grey[600]),
-        padding: EdgeInsets.zero,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        offset: const Offset(-10, 30),
-        onSelected: (value) {
-          if (value == 'export') {
-            widget.onExportConversation(conv);
-          } else if (value == 'delete') {
-            widget.onDeleteConversation(index);
-          } else if (value == 'split' && widget.onEnableSplitMode != null) {
-            _showSplitModeDialog(index);
-          }
-        },
-        itemBuilder: (context) => [
-        if (widget.onEnableSplitMode != null && !widget.isSplitMode)
-    PopupMenuItem(
-      value: 'split',
-      child: Row(
-        children: [
-          Icon(Icons.splitscreen, size: 18, color: Colors.blue[700]),
-          const SizedBox(width: 12),
-          const Text('Open in Split View', style: TextStyle(fontSize: 14)),
-        ],
-      ),
-    ),
+    final colorScheme = Theme.of(context).colorScheme;
 
+    return PopupMenuButton<String>(
+      icon: Icon(Icons.more_vert_rounded, size: 18, color: colorScheme.onSurfaceVariant),
+      padding: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      offset: const Offset(-10, 30),
+      onSelected: (value) {
+        switch (value) {
+          case 'export':
+            widget.onExportConversation(conv);
+            break;
+          case 'delete':
+            widget.onDeleteConversation(index);
+            break;
+          case 'split':
+            if (widget.onEnableSplitMode != null) {
+              _showSplitModeDialog(index);
+            }
+            break;
+        }
+      },
+      itemBuilder: (context) => [
+        if (widget.onEnableSplitMode != null && !widget.isSplitMode)
+          PopupMenuItem(
+            value: 'split',
+            child: Row(
+              children: [
+                Icon(Icons.splitscreen, size: 18, color: colorScheme.primary),
+                const SizedBox(width: 12),
+                const Text('Open in Split View', style: TextStyle(fontSize: 14)),
+              ],
+            ),
+          ),
         PopupMenuItem(
-          value: 'exportxx',
+          value: 'export',
           child: Row(
             children: [
-              Icon(Icons.download_rounded, size: 18, color: Colors.green[700]),
+              Icon(Icons.download_rounded, size: 18, color: colorScheme.tertiary),
               const SizedBox(width: 12),
-              const Text('Exportx', style: TextStyle(fontSize: 14)),
+              const Text('Export', style: TextStyle(fontSize: 14)),
             ],
           ),
         ),
@@ -872,19 +828,22 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
           value: 'delete',
           child: Row(
             children: [
-              Icon(Icons.delete_rounded, size: 18, color: Colors.red[700]),
+              Icon(Icons.delete_rounded, size: 18, color: colorScheme.error),
               const SizedBox(width: 12),
-              const Text('Delete', style: TextStyle(fontSize: 14, color: Colors.red)),
+              Text('Delete', style: TextStyle(fontSize: 14, color: colorScheme.error)),
             ],
           ),
         ),
       ],
     );
   }
-  /// Collapsible settings section
+
+
   Widget _buildSettingsSection() {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Column(
-      mainAxisSize: MainAxisSize.min,
       children: [
         _buildSectionHeader(
           title: 'Settings',
@@ -897,56 +856,53 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
           Container(
             padding: const EdgeInsets.all(16.0),
             decoration: BoxDecoration(
-              color: widget.isDarkMode ? Colors.grey[900]!.withOpacity(0.5) : Colors.grey[50],
-              border: Border(top: BorderSide(color: _getBorderColor(), width: 1)),
+              color: colorScheme.surfaceContainerHighest.withOpacity(0.5),
+              border: Border(top: BorderSide(color: colorScheme.outlineVariant)),
             ),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
               children: [
                 _buildSettingTile(
                   icon: widget.isDarkMode ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
-                  iconColor: widget.isDarkMode ? Colors.amber[300]! : Colors.orange[700]!,
+                  iconColor: colorScheme.secondary,
                   title: 'Dark Mode',
                   trailing: Switch(
                     value: widget.isDarkMode,
                     onChanged: (_) => widget.onToggleTheme(),
                     materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    activeColor: widget.isDarkMode ? Colors.blue[400] : Colors.blue[600],
                   ),
                   onTap: widget.onToggleTheme,
                 ),
                 const SizedBox(height: 4),
                 _buildSettingTile(
                   icon: Icons.cloud_download_rounded,
-                  iconColor: widget.isDarkMode ? Colors.blue[300]! : Colors.blue[700]!,
+                  iconColor: colorScheme.primary,
                   title: 'Export All',
-                  trailing: Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Colors.grey[600]),
-                  onTap: widget.onExportAll,
-                ),
-                const SizedBox(height: 4),
-                _buildSettingTile(
-                  icon: Icons.delete_sweep_rounded,
-                  iconColor: widget.isDarkMode ? Colors.red[300]! : Colors.red[700]!,
-                  title: 'Clear All',
-                  trailing: Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Colors.grey[600]),
-                  onTap: _showClearAllDialog,
-                ),
-                const SizedBox(height: 4),
-                _buildSettingTile(
-                  icon: Icons.info_outline_rounded,
-                  iconColor: widget.isDarkMode ? Colors.purple[300]! : Colors.purple[700]!,
-                  title: 'About',
-                  trailing: Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Colors.grey[600]),
-                  onTap: _showAboutDialog,
-                ),
-              ],
-            ),
-          ),
+      trailing: Icon(Icons.chevron_right_rounded, size: 20, color: Colors.grey[600]),
+      onTap: widget.onExportAll,
+    ),
+      const SizedBox(height: 4),
+      _buildSettingTile(
+        icon: Icons.delete_sweep_rounded,
+        iconColor: widget.isDarkMode ? Colors.red[300]! : Colors.red[700]!,
+        title: 'Clear All',
+        trailing: Icon(Icons.chevron_right_rounded, size: 20, color: Colors.grey[600]),
+        onTap: _showClearAllDialog,
+      ),
+      const SizedBox(height: 4),
+      _buildSettingTile(
+        icon: Icons.info_outline_rounded,
+        iconColor: widget.isDarkMode ? Colors.purple[300]! : Colors.purple[700]!,
+        title: 'About',
+        trailing: Icon(Icons.chevron_right_rounded, size: 20, color: Colors.grey[600]),
+        onTap: _showAboutDialog,
+      ),
+    ],
+    ),
+    ),
       ],
     );
   }
 
-  /// Reusable setting tile widget
   Widget _buildSettingTile({
     required IconData icon,
     required Color iconColor,
@@ -985,12 +941,4 @@ class _SidebarState extends State<Sidebar> with TickerProviderStateMixin {
       ),
     );
   }
-
-  Color _getBackgroundColor() {
-    return widget.isDarkMode ? const Color(0xFF1E1E1E) : const Color(0xFFF5F5F5);
-  }
-
-  Color _getBorderColor() {
-    return widget.isDarkMode ? Colors.grey[850]! : Colors.grey[300]!;
-  }
-  }
+}

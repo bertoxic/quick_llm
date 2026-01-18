@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Enhanced chat header with modern design and better UX
+/// Enhanced chat header with theme-based colors
 class ChatHeader extends StatefulWidget {
   final bool isDarkMode;
   final bool isSidebarVisible;
@@ -71,33 +71,22 @@ class _ChatHeaderState extends State<ChatHeader> with SingleTickerProviderStateM
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Container(
       height: 64,
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: widget.isDarkMode
-              ? [
-            const Color(0xFF1E1E1E),
-            const Color(0xFF252525),
-          ]
-              : [
-            Colors.white,
-            Colors.grey[50]!,
-          ],
-        ),
+        color: colorScheme.surface,
         border: Border(
           bottom: BorderSide(
-            color: _getBorderColor(),
+            color: colorScheme.outlineVariant,
             width: 1,
           ),
         ),
         boxShadow: [
           BoxShadow(
-            color: widget.isDarkMode
-                ? Colors.black.withOpacity(0.3)
-                : Colors.black.withOpacity(0.05),
+            color: colorScheme.shadow.withOpacity(0.05),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -122,15 +111,16 @@ class _ChatHeaderState extends State<ChatHeader> with SingleTickerProviderStateM
 
   /// Enhanced sidebar toggle with animation
   Widget _buildSidebarToggle() {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Container(
       decoration: BoxDecoration(
-        color: widget.isDarkMode
-            ? Colors.grey[850]!.withOpacity(0.5)
-            : Colors.grey[200],
+        color: colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: widget.isSidebarVisible
-              ? (widget.isDarkMode ? Colors.blue[700]! : Colors.blue[300]!)
+              ? colorScheme.primary
               : Colors.transparent,
           width: 1.5,
         ),
@@ -149,8 +139,8 @@ class _ChatHeaderState extends State<ChatHeader> with SingleTickerProviderStateM
                 Icons.menu_rounded,
                 size: 22,
                 color: widget.isSidebarVisible
-                    ? (widget.isDarkMode ? Colors.blue[300] : Colors.blue[700])
-                    : (widget.isDarkMode ? Colors.grey[400] : Colors.grey[700]),
+                    ? colorScheme.primary
+                    : colorScheme.onSurfaceVariant,
               ),
             ),
           ),
@@ -159,8 +149,11 @@ class _ChatHeaderState extends State<ChatHeader> with SingleTickerProviderStateM
     );
   }
 
-  /// Modern model selector with custom styling (FIXED FOR OVERFLOW)
+  /// Modern model selector with custom styling
   Widget _buildModelSelector() {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Container(
       constraints: const BoxConstraints(
         maxWidth: 280,
@@ -168,19 +161,15 @@ class _ChatHeaderState extends State<ChatHeader> with SingleTickerProviderStateM
       ),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: widget.isDarkMode
-            ? Colors.grey[850]!.withOpacity(0.6)
-            : Colors.white,
+        color: colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: widget.isDarkMode ? Colors.grey[800]! : Colors.grey[300]!,
+          color: colorScheme.outline,
           width: 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: widget.isDarkMode
-                ? Colors.black.withOpacity(0.2)
-                : Colors.black.withOpacity(0.03),
+            color: colorScheme.shadow.withOpacity(0.05),
             blurRadius: 4,
             offset: const Offset(0, 1),
           ),
@@ -192,15 +181,13 @@ class _ChatHeaderState extends State<ChatHeader> with SingleTickerProviderStateM
           Container(
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
-              color: widget.isDarkMode
-                  ? Colors.blue[900]!.withOpacity(0.3)
-                  : Colors.blue[50],
+              color: colorScheme.primaryContainer,
               shape: BoxShape.circle,
             ),
             child: Icon(
               Icons.psychology_rounded,
               size: 18,
-              color: widget.isDarkMode ? Colors.blue[300] : Colors.blue[700],
+              color: colorScheme.onPrimaryContainer,
             ),
           ),
           const SizedBox(width: 10),
@@ -212,15 +199,14 @@ class _ChatHeaderState extends State<ChatHeader> with SingleTickerProviderStateM
               underline: const SizedBox(),
               icon: Icon(
                 Icons.keyboard_arrow_down_rounded,
-                color: widget.isDarkMode ? Colors.grey[400] : Colors.grey[700],
+                color: colorScheme.onSurfaceVariant,
                 size: 20,
               ),
-              style: TextStyle(
-                fontSize: 14,
+              style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.w600,
-                color: widget.isDarkMode ? Colors.white : Colors.black87,
+                color: colorScheme.onSurface,
               ),
-              dropdownColor: widget.isDarkMode ? Colors.grey[850] : Colors.white,
+              dropdownColor: colorScheme.surfaceContainer,
               borderRadius: BorderRadius.circular(12),
               items: widget.availableModels.map((model) {
                 return DropdownMenuItem(
@@ -288,27 +274,32 @@ class _ChatHeaderState extends State<ChatHeader> with SingleTickerProviderStateM
     bool useAnimation = false,
     Color? activeColor,
   }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     final color = isActive
-        ? (activeColor ?? (widget.isDarkMode ? Colors.blue[300] : Colors.blue[700]))
-        : (widget.isDarkMode ? Colors.grey[400] : Colors.grey[700]);
+        ? (activeColor ?? colorScheme.primary)
+        : colorScheme.onSurfaceVariant;
+
+    final backgroundColor = isActive
+        ? (activeColor != null
+        ? activeColor.withOpacity(0.15)
+        : colorScheme.primaryContainer)
+        : colorScheme.surfaceContainerHighest;
+
+    final borderColor = isActive
+        ? (activeColor ?? colorScheme.primary)
+        : Colors.transparent;
 
     return Tooltip(
       message: tooltip,
       waitDuration: const Duration(milliseconds: 500),
       child: Container(
         decoration: BoxDecoration(
-          color: isActive
-              ? (widget.isDarkMode
-              ? (activeColor ?? Colors.blue[900])!.withOpacity(0.3)
-              : (activeColor ?? Colors.blue[50]))
-              : (widget.isDarkMode
-              ? Colors.grey[850]!.withOpacity(0.5)
-              : Colors.grey[100]),
+          color: backgroundColor,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: isActive
-                ? (activeColor ?? (widget.isDarkMode ? Colors.blue[700]! : Colors.blue[300]!))
-                : Colors.transparent,
+            color: borderColor,
             width: 1.5,
           ),
         ),
@@ -330,9 +321,5 @@ class _ChatHeaderState extends State<ChatHeader> with SingleTickerProviderStateM
         ),
       ),
     );
-  }
-
-  Color _getBorderColor() {
-    return widget.isDarkMode ? Colors.grey[850]! : Colors.grey[300]!;
   }
 }

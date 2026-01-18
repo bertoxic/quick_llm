@@ -18,7 +18,20 @@ class MessageStreamHandler {
   StreamSubscription<String>? _activeStreamSubscription;
 
   MessageStreamHandler(this._ollamaService);
+  // Track if we should continue updating
+  bool _shouldContinueUpdating = true;
 
+  /// Call this when changing contexts (e.g., switching screens)
+  void pauseUpdates() {
+    _shouldContinueUpdating = false;
+    debugPrint('⏸️ MessageStreamHandler paused');
+  }
+
+  /// Resume updates after context change
+  void resumeUpdates() {
+    _shouldContinueUpdating = true;
+    debugPrint('▶️ MessageStreamHandler resumed');
+  }
   /// Cancel any active stream
   void cancelActiveStream() {
     debugPrint('🔴 Cancelling active stream');
@@ -148,6 +161,12 @@ class MessageStreamHandler {
       int? targetConversationIndex, {
         bool isRightPane = false,
       }) {
+    // Don't update if we're in a context switch
+    if (!_shouldContinueUpdating) {
+      debugPrint('⏸️ Skipping update during context switch');
+      return;
+    }
+
     if (targetConversationIndex == null ||
         targetConversationIndex >= provider.conversations.length) {
       debugPrint('⚠️ Invalid conversation index: $targetConversationIndex');
@@ -195,6 +214,13 @@ class MessageStreamHandler {
     }
   }
 
+  void dispose() {
+    _updateDebounceTimer?.cancel();
+    _activeStreamSubscription?.cancel();
+    _activeStreamSubscription = null;
+    _isStreamActive = false;
+    _shouldContinueUpdating = false; // Add this
+  }
   /// Handle streaming errors
   void _handleStreamError(
       dynamic error,
@@ -296,11 +322,5 @@ class MessageStreamHandler {
       debugPrint('🗑️ Removed empty assistant message after cancellation');
     }
   }
-
-  void dispose() {
-    _updateDebounceTimer?.cancel();
-    _activeStreamSubscription?.cancel();
-    _activeStreamSubscription = null;
-    _isStreamActive = false;
   }
-}
+

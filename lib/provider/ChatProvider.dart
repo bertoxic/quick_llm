@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
 import '../models/chat_message.dart';
 import '../models/conversation.dart';
+import '../services/ollama_service.dart';
 
 /// Provider class to manage shared chat state across the app
 class ChatProvider with ChangeNotifier {
+  // OllamaService instance
+  final OllamaService ollamaService = OllamaService();
+
   // Messages and conversations
   List<ChatMessage> _messages = [];
   List<Conversation> _conversations = [];
   int? _selectedConversationIndex;
   bool _isSending = false;
   bool get isSending => _isSending;
+  int _numCtx = 32768;
 
   // Callback for when conversation indices might shift
   Function()? onConversationIndicesChanged;
@@ -73,6 +78,13 @@ class ChatProvider with ChangeNotifier {
     _messages.clear();
     notifyListeners();
   }
+  void setNumCtx(int value) {
+    _numCtx = value;
+    print('✅ Context window updated: $_numCtx tokens');
+    notifyListeners();
+  }
+
+  int get nu => _numCtx;
 
   void setMessages(List<ChatMessage> messages) {
     _messages = List.from(messages);
@@ -215,5 +227,12 @@ class ChatProvider with ChangeNotifier {
     if (isDarkMode != null) _isDarkMode = isDarkMode;
     if (isSidebarVisible != null) _isSidebarVisible = isSidebarVisible;
     notifyListeners();
+  }
+
+  // Cleanup when provider is disposed
+  @override
+  void dispose() {
+    ollamaService.dispose();
+    super.dispose();
   }
 }

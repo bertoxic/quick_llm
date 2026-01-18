@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// Dialog for configuring advanced AI settings with modern design
-/// Allows users to customize system prompt, temperature, and token limits
+/// Allows users to customize system prompt, temperature, token limits, and context window
 class SettingsDialog extends StatefulWidget {
   /// Controller for the system prompt text field
   final TextEditingController systemPromptController;
@@ -15,6 +15,9 @@ class SettingsDialog extends StatefulWidget {
   /// Maximum number of tokens to generate
   final int maxTokens;
 
+  /// Context window size (number of tokens for conversation history)
+  final int numCtx;
+
   /// Dark mode flag for theming
   final bool isDarkMode;
 
@@ -27,6 +30,9 @@ class SettingsDialog extends StatefulWidget {
   /// Callback when max tokens slider changes
   final Function(int) onMaxTokensChanged;
 
+  /// Callback when context window slider changes
+  final Function(int) onNumCtxChanged;
+
   /// Callback when user saves the settings
   final VoidCallback onSave;
 
@@ -36,10 +42,12 @@ class SettingsDialog extends StatefulWidget {
     required this.useSystemPrompt,
     required this.temperature,
     required this.maxTokens,
+    required this.numCtx,
     required this.isDarkMode,
     required this.onUseSystemPromptChanged,
     required this.onTemperatureChanged,
     required this.onMaxTokensChanged,
+    required this.onNumCtxChanged,
     required this.onSave,
   });
 
@@ -51,6 +59,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
   late bool _useSystemPrompt;
   late double _temperature;
   late int _maxTokens;
+  late int _numCtx;
 
   @override
   void initState() {
@@ -58,6 +67,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
     _useSystemPrompt = widget.useSystemPrompt;
     _temperature = widget.temperature;
     _maxTokens = widget.maxTokens;
+    _numCtx = widget.numCtx;
   }
 
   @override
@@ -66,7 +76,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
       backgroundColor: Colors.transparent,
       child: Container(
         width: 500,
-        constraints: const BoxConstraints(maxHeight: 700),
+        constraints: const BoxConstraints(maxHeight: 750),
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topLeft,
@@ -114,6 +124,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
                     _buildTemperatureSection(),
                     const SizedBox(height: 24),
                     _buildMaxTokensSection(),
+                    const SizedBox(height: 24),
+                    _buildContextWindowSection(),
                   ],
                 ),
               ),
@@ -310,10 +322,10 @@ class _SettingsDialogState extends State<SettingsDialog> {
         _buildSlider(
           value: _maxTokens.toDouble(),
           min: 256,
-          max: 104096,
+          max: 256000,
           divisions: 15,
           minLabel: '256',
-          maxLabel: '104096',
+          maxLabel: '100K',
           activeColor: Colors.green,
           onChanged: (value) {
             setState(() {
@@ -325,6 +337,46 @@ class _SettingsDialogState extends State<SettingsDialog> {
         const SizedBox(height: 8),
         Text(
           'Approximately ${(_maxTokens * 0.75).toInt()} words',
+          style: TextStyle(
+            fontSize: 12,
+            color: widget.isDarkMode ? Colors.grey[400] : Colors.grey[600],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Builds the context window slider section
+  Widget _buildContextWindowSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildSectionHeader(
+          icon: Icons.memory_rounded,
+          title: 'Context Window',
+          tooltip: 'Size of conversation history the AI can remember',
+          value: _numCtx.toString(),
+          valueColor: Colors.blue,
+        ),
+        const SizedBox(height: 16),
+        _buildSlider(
+          value: _numCtx.toDouble(),
+          min: 2048,
+          max: 128000,
+          divisions: 12,
+          minLabel: '2K',
+          maxLabel: '128K',
+          activeColor: Colors.blue,
+          onChanged: (value) {
+            setState(() {
+              _numCtx = value.toInt();
+            });
+            widget.onNumCtxChanged(value.toInt());
+          },
+        ),
+        const SizedBox(height: 8),
+        Text(
+          _getContextDescription(),
           style: TextStyle(
             fontSize: 12,
             color: widget.isDarkMode ? Colors.grey[400] : Colors.grey[600],
@@ -661,6 +713,19 @@ class _SettingsDialogState extends State<SettingsDialog> {
       return 'More creative and varied';
     } else {
       return 'Very creative and random';
+    }
+  }
+
+  /// Returns a description based on the context window size
+  String _getContextDescription() {
+    if (_numCtx < 4096) {
+      return 'Short conversation memory - suitable for quick queries';
+    } else if (_numCtx < 16384) {
+      return 'Standard memory - good for most conversations';
+    } else if (_numCtx < 65536) {
+      return 'Large memory - handles long documents and conversations';
+    } else {
+      return 'Massive memory - processes very large documents';
     }
   }
 }

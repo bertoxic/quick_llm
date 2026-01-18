@@ -212,6 +212,19 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
     debugPrint('✅ Mini mode: Generation stopped');
   }
 
+  // Sync state when exiting mini mode WITHOUT stopping generation
+  void _syncOnExit() {
+    if (!mounted) return;
+    final provider = context.read<ChatProvider>();
+
+    // Sync current state before exiting
+    if (provider.messages.isNotEmpty) {
+      _syncMessagesToConversation(provider);
+    }
+
+    debugPrint('💾 Mini mode synced state before exit (generation continues)');
+  }
+
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients && mounted) {
@@ -406,7 +419,7 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
           ),
           _buildHeaderButton(
             icon: Icons.fullscreen,
-            onPressed: widget.onExitMiniMode,
+            onPressed: _handleExitMiniMode,
             tooltip: 'Exit mini mode',
             color: _accentColor,
           ),
@@ -430,6 +443,13 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
       constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
       splashRadius: 16,
     );
+  }
+
+  void _handleExitMiniMode() {
+    // Sync state but DON'T stop generation
+    _syncOnExit();
+    // Call the parent callback
+    widget.onExitMiniMode();
   }
 
   Widget _buildMessageList(ChatProvider provider) {

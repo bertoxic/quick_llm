@@ -41,6 +41,8 @@ dependencies:
   docx_to_text: ^1.0.1
   markdown_widget: ^2.3.2+8
   url_launcher: ^6.2.1
+  gpt_markdown: ^1.1.5
+  msix: ^3.16.12
 
 
 dev_dependencies:

@@ -37,6 +37,7 @@ class OllamaService {
     String? systemPrompt,
     double temperature = 0.7,
     int maxTokens = 2048,
+    int numCtx = 18193,
     bool enableThinking = true,
     List<String>? images,
     List<String>? documents,
@@ -161,6 +162,7 @@ class OllamaService {
         'options': {
           'temperature': temperature,
           'num_predict': maxTokens,
+          'num_ctx': numCtx,
         },
       };
 
