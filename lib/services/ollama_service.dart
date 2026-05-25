@@ -17,7 +17,7 @@ class OllamaService {
 
   void cancelGeneration() {
     if (!_isGenerating) return;
-    print('🛑 Cancelling active generation');
+    debugPrint('🛑 Cancelling active generation');
     _cleanup();
   }
 
@@ -90,7 +90,7 @@ class OllamaService {
         final validDocs = docContents.whereType<String>().toList();
         if (validDocs.isNotEmpty) {
           documentContext = '${validDocs.join('\n\n')}\n';
-          print('📄 Processed ${validDocs.length} document(s)');
+          debugPrint('📄 Processed ${validDocs.length} document(s)');
         }
       }
 
@@ -98,7 +98,7 @@ class OllamaService {
       if (images != null && images.isNotEmpty) {
         base64Images = await _encodeImages(images);
         if (base64Images.isNotEmpty) {
-          print('📷 Encoded ${base64Images.length} image(s)');
+          debugPrint('📷 Encoded ${base64Images.length} image(s)');
         }
       }
 
@@ -141,19 +141,19 @@ class OllamaService {
         messages.add(userMessage);
       }
 
-      print('🔗 Calling Ollama /chat endpoint');
-      print('   Model: $model');
-      print('   Messages: ${messages.length}');
-      print('   Temperature: $temperature');
-      print('   Max tokens: $maxTokens');
-      print('   Has images: ${base64Images?.isNotEmpty ?? false}');
-      print('   Has documents: ${documentContext != null}');
+      debugPrint('🔗 Calling Ollama /chat endpoint');
+      debugPrint('   Model: $model');
+      debugPrint('   Messages: ${messages.length}');
+      debugPrint('   Temperature: $temperature');
+      debugPrint('   Max tokens: $maxTokens');
+      debugPrint('   Has images: ${base64Images?.isNotEmpty ?? false}');
+      debugPrint('   Has documents: ${documentContext != null}');
 
       final modelSupportsThinking = supportsThinking(model);
       final shouldEnableThinking = enableThinking && modelSupportsThinking;
 
-      print('   Model supports thinking: $modelSupportsThinking');
-      print('   Thinking enabled: $shouldEnableThinking');
+      debugPrint('   Model supports thinking: $modelSupportsThinking');
+      debugPrint('   Thinking enabled: $shouldEnableThinking');
 
       final requestBody = {
         'model': model,
@@ -168,9 +168,9 @@ class OllamaService {
 
       if (shouldEnableThinking) {
         requestBody['think'] = true;
-        print('   ✅ Think mode activated');
+        debugPrint('   ✅ Think mode activated');
       } else if (enableThinking && !modelSupportsThinking) {
-        print('   ⚠️ Thinking requested but model does not support it');
+        debugPrint('   ⚠️ Thinking requested but model does not support it');
       }
 
       final request = http.Request('POST', url)
@@ -213,7 +213,7 @@ class OllamaService {
               if (!hasStartedThinking) {
                 controller.add('Thinking...');
                 hasStartedThinking = true;
-                print('🤔 Started thinking...');
+                debugPrint('🤔 Started thinking...');
               }
               controller.add(thinking);
             }
@@ -221,7 +221,7 @@ class OllamaService {
             if (hasContent && hasStartedThinking && !hasFinishedThinking) {
               controller.add('...done thinking.');
               hasFinishedThinking = true;
-              print('✅ Finished thinking, starting response');
+              debugPrint('✅ Finished thinking, starting response');
             }
 
             if (hasContent) {
@@ -230,16 +230,16 @@ class OllamaService {
             }
 
             if (done == true) {
-              print('✅ Stream completed');
+              debugPrint('✅ Stream completed');
               _cleanup();
             }
           } catch (e) {
-            print('⚠️ Error parsing JSON line: $e');
-            print('   Line content: $line');
+            debugPrint('⚠️ Error parsing JSON line: $e');
+            debugPrint('   Line content: $line');
           }
         },
         onError: (error) {
-          print('❌ Stream error: $error');
+          debugPrint('❌ Stream error: $error');
           final controller = _activeController;
           if (controller != null && !controller.isClosed) {
             if (error is! http.ClientException ||
@@ -250,7 +250,7 @@ class OllamaService {
           _cleanup();
         },
         onDone: () {
-          print('✅ Stream done');
+          debugPrint('✅ Stream done');
           _cleanup();
         },
         cancelOnError: false,
@@ -259,22 +259,22 @@ class OllamaService {
       yield* _activeController!.stream;
 
     } on http.ClientException catch (e) {
-      print('❌ Client error: ${e.message}');
+      debugPrint('❌ Client error: ${e.message}');
       if (!e.message.contains('Connection closed')) {
         yield 'Error: Connection failed - ${e.message}';
       }
     } on TimeoutException catch (e) {
-      print('❌ Timeout: ${e.message}');
+      debugPrint('❌ Timeout: ${e.message}');
       yield 'Error: Request timed out';
     } on FormatException catch (e) {
-      print('❌ Format error: $e');
+      debugPrint('❌ Format error: $e');
       yield 'Error: Invalid response format';
     } catch (e) {
-      print('❌ Error in generateResponse: $e');
+      debugPrint('❌ Error in generateResponse: $e');
       yield 'Error: $e';
     } finally {
       _cleanup();
-      print('🧹 Cleanup completed');
+      debugPrint('🧹 Cleanup completed');
     }
   }
 
@@ -398,17 +398,17 @@ class OllamaService {
             .where((name) => name.isNotEmpty)
             .toList();
       } else {
-        print('⚠️ Failed to fetch models: ${response.statusCode}');
+        debugPrint('⚠️ Failed to fetch models: ${response.statusCode}');
         return [];
       }
     } on TimeoutException {
-      print('⚠️ Model fetch timed out');
+      debugPrint('⚠️ Model fetch timed out');
       return [];
     } on http.ClientException catch (e) {
-      print('⚠️ Connection error fetching models: ${e.message}');
+      debugPrint('⚠️ Connection error fetching models: ${e.message}');
       return [];
     } catch (e) {
-      print('⚠️ Error fetching models: $e');
+      debugPrint('⚠️ Error fetching models: $e');
       return [];
     }
   }

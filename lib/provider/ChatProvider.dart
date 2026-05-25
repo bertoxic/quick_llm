@@ -229,7 +229,6 @@ class ChatProvider with ChangeNotifier {
     notifyListeners();
   }
 
-  // Cleanup when provider is disposed
   @override
   void dispose() {
     ollamaService.dispose();

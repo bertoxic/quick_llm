@@ -595,11 +595,14 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
         onMaxTokensChanged: (value) => provider.setMaxTokens(value),
         onSave: () {
           provider.setSystemPrompt(_systemPromptController.text);
+
           _savePreferences();
         },
         isDarkMode: widget.isDarkMode,
-        numCtx: provider.nu, onNumCtxChanged: (int p1) { provider.setNumCtx(p1); },
+        numCtx: provider.nu,
+        onNumCtxChanged: (int p1) { provider.setNumCtx(p1); },
       ),
+
     );
   }
 
