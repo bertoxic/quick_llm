@@ -32,6 +32,7 @@ class MessageStreamHandler {
     _shouldContinueUpdating = true;
     debugPrint('▶️ MessageStreamHandler resumed');
   }
+
   /// Cancel any active stream
   void cancelActiveStream() {
     debugPrint('🔴 Cancelling active stream');
@@ -61,13 +62,14 @@ class MessageStreamHandler {
     bool streamCompleted = false;
     bool hadError = false;
 
-    debugPrint('🚀 Starting stream for conversation index: $generatingForIndex (${isRightPane ? "RIGHT" : "LEFT"} pane)');
+    debugPrint(
+        '🚀 Starting stream for conversation index: $generatingForIndex (${isRightPane ? "RIGHT" : "LEFT"} pane)');
 
     try {
       onStopGenerationChanged(true);
 
       _activeStreamSubscription = stream.listen(
-            (token) {
+        (token) {
           if (!provider.isGenerating) {
             debugPrint('🛑 Generation stopped by user, cancelling stream');
             _activeStreamSubscription?.cancel();
@@ -123,7 +125,6 @@ class MessageStreamHandler {
       );
 
       await _activeStreamSubscription!.asFuture();
-
     } catch (e) {
       hadError = true;
       debugPrint('❌ Error during streaming: $e');
@@ -150,17 +151,18 @@ class MessageStreamHandler {
         debugPrint('🏁 Generation stopped in finally block');
       }
 
-      debugPrint('📊 Stream summary - Completed: $streamCompleted, Error: $hadError, Response length: ${localStreamingResponse.length}');
+      debugPrint(
+          '📊 Stream summary - Completed: $streamCompleted, Error: $hadError, Response length: ${localStreamingResponse.length}');
     }
   }
 
   /// Update message with thinking text extraction
   void _updateMessageWithThinking(
-      ChatProvider provider,
-      String streamingText,
-      int? targetConversationIndex, {
-        bool isRightPane = false,
-      }) {
+    ChatProvider provider,
+    String streamingText,
+    int? targetConversationIndex, {
+    bool isRightPane = false,
+  }) {
     // Don't update if we're in a context switch
     if (!_shouldContinueUpdating) {
       debugPrint('⏸️ Skipping update during context switch');
@@ -209,7 +211,8 @@ class MessageStreamHandler {
       ),
     );
 
-    if (!isRightPane && provider.selectedConversationIndex == targetConversationIndex) {
+    if (!isRightPane &&
+        provider.selectedConversationIndex == targetConversationIndex) {
       provider.setMessages(updatedMessages);
     }
   }
@@ -221,14 +224,15 @@ class MessageStreamHandler {
     _isStreamActive = false;
     _shouldContinueUpdating = false; // Add this
   }
+
   /// Handle streaming errors
   void _handleStreamError(
-      dynamic error,
-      ChatProvider provider,
-      String localStreamingResponse,
-      int? generatingForIndex, {
-        bool isRightPane = false,
-      }) {
+    dynamic error,
+    ChatProvider provider,
+    String localStreamingResponse,
+    int? generatingForIndex, {
+    bool isRightPane = false,
+  }) {
     final errorStr = error.toString();
     final isCancellation = errorStr.contains('Connection closed') ||
         errorStr.contains('ClientException') ||
@@ -244,9 +248,12 @@ class MessageStreamHandler {
     final targetConv = provider.conversations[generatingForIndex];
 
     if (!isCancellation && targetConv.messages.isNotEmpty) {
-      _updateErrorMessage(provider, generatingForIndex, errorStr, isRightPane: isRightPane);
+      _updateErrorMessage(provider, generatingForIndex, errorStr,
+          isRightPane: isRightPane);
     } else if (isCancellation && targetConv.messages.isNotEmpty) {
-      _handleCancellation(provider, generatingForIndex, targetConv, localStreamingResponse, isRightPane: isRightPane);
+      _handleCancellation(
+          provider, generatingForIndex, targetConv, localStreamingResponse,
+          isRightPane: isRightPane);
     }
 
     if (localStreamingResponse.isNotEmpty) {
@@ -260,11 +267,11 @@ class MessageStreamHandler {
   }
 
   void _updateErrorMessage(
-      ChatProvider provider,
-      int index,
-      String errorMessage, {
-        bool isRightPane = false,
-      }) {
+    ChatProvider provider,
+    int index,
+    String errorMessage, {
+    bool isRightPane = false,
+  }) {
     final targetConv = provider.conversations[index];
     final updatedMessages = List<ChatMessage>.from(targetConv.messages);
 
@@ -290,14 +297,15 @@ class MessageStreamHandler {
   }
 
   void _handleCancellation(
-      ChatProvider provider,
-      int index,
-      Conversation targetConv,
-      String partialResponse, {
-        bool isRightPane = false,
-      }) {
+    ChatProvider provider,
+    int index,
+    Conversation targetConv,
+    String partialResponse, {
+    bool isRightPane = false,
+  }) {
     if (partialResponse.isNotEmpty) {
-      debugPrint('✂️ Keeping partial response (${partialResponse.length} chars) after cancellation');
+      debugPrint(
+          '✂️ Keeping partial response (${partialResponse.length} chars) after cancellation');
       return;
     }
 
@@ -322,5 +330,4 @@ class MessageStreamHandler {
       debugPrint('🗑️ Removed empty assistant message after cancellation');
     }
   }
-  }
-
+}

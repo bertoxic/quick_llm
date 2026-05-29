@@ -113,18 +113,18 @@ class _MyAppState extends State<MyApp> {
           themeMode: chatProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
           home: _isCheckingConnection
               ? const Scaffold(
-            body: Center(
-              child: CircularProgressIndicator(),
-            ),
-          )
+                  body: Center(
+                    child: CircularProgressIndicator(),
+                  ),
+                )
               : _ollamaConnected
-              ? ChatScreen(
-            toggleTheme: toggleTheme,
-            isDarkMode: chatProvider.isDarkMode,
-          )
-              : OllamaConnectionScreen(
-            onConnectionSuccess: _onOllamaConnectionSuccess,
-          ),
+                  ? ChatScreen(
+                      toggleTheme: toggleTheme,
+                      isDarkMode: chatProvider.isDarkMode,
+                    )
+                  : OllamaConnectionScreen(
+                      onConnectionSuccess: _onOllamaConnectionSuccess,
+                    ),
         );
       },
     );

@@ -96,8 +96,8 @@ class _OllamaConnectionScreenState extends State<OllamaConnectionScreen> {
               Text(
                 'Ollama Not Connected',
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+                      fontWeight: FontWeight.bold,
+                    ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),
@@ -106,8 +106,8 @@ class _OllamaConnectionScreenState extends State<OllamaConnectionScreen> {
               Text(
                 _statusMessage,
                 style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: Colors.grey[600],
-                ),
+                      color: Colors.grey[600],
+                    ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 32),
@@ -122,9 +122,10 @@ class _OllamaConnectionScreenState extends State<OllamaConnectionScreen> {
                       children: [
                         Text(
                           'To use this app, you need:',
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
+                          style:
+                              Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
                         ),
                         const SizedBox(height: 16),
                         _buildStep(
@@ -190,7 +191,8 @@ class _OllamaConnectionScreenState extends State<OllamaConnectionScreen> {
     );
   }
 
-  Widget _buildStep(BuildContext context, String number, String title, String description) {
+  Widget _buildStep(
+      BuildContext context, String number, String title, String description) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

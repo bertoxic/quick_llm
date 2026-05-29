@@ -12,7 +12,8 @@ class ConversationManager {
 
   /// Create or update conversation with new message
   void createOrUpdate(ChatMessage userMessage, ChatProvider provider) {
-    if (provider.selectedConversationIndex == null && provider.messages.length >= 1) {
+    if (provider.selectedConversationIndex == null &&
+        provider.messages.length >= 1) {
       _createNewConversation(userMessage, provider);
     } else if (provider.selectedConversationIndex != null) {
       _updateExistingConversation(provider);

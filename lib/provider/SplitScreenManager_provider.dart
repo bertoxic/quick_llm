@@ -58,7 +58,6 @@ class SplitScreenManager extends ChangeNotifier {
   }
 }
 
-
 class DraggableConversationTile extends StatelessWidget {
   final int index;
   final Conversation conversation;
@@ -127,15 +126,19 @@ class DraggableConversationTile extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             decoration: BoxDecoration(
               color: isSelected
-                  ? (isDarkMode ? Colors.blue[800]!.withOpacity(0.4) : Colors.blue[100])
-                  : (isDarkMode ? Colors.grey[850]!.withOpacity(0.5) : Colors.white),
+                  ? (isDarkMode
+                      ? Colors.blue[800]!.withOpacity(0.4)
+                      : Colors.blue[100])
+                  : (isDarkMode
+                      ? Colors.grey[850]!.withOpacity(0.5)
+                      : Colors.white),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: isGenerating
                     ? Colors.green.withOpacity(0.5)
                     : (isSelected
-                    ? (isDarkMode ? Colors.blue[600]! : Colors.blue[300]!)
-                    : Colors.transparent),
+                        ? (isDarkMode ? Colors.blue[600]! : Colors.blue[300]!)
+                        : Colors.transparent),
                 width: isGenerating ? 2.0 : 1.5,
               ),
             ),
@@ -151,11 +154,13 @@ class DraggableConversationTile extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 14,
-                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                          fontWeight:
+                              isSelected ? FontWeight.w600 : FontWeight.w500,
                         ),
                       ),
                     ),
-                    Icon(Icons.drag_indicator, size: 18, color: Colors.grey[600]),
+                    Icon(Icons.drag_indicator,
+                        size: 18, color: Colors.grey[600]),
                   ],
                 ),
               ],

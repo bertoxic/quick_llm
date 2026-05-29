@@ -6,6 +6,7 @@ import 'package:flutter_highlight/themes/atom-one-light.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:io';
 import '../models/chat_message.dart';
+import '../utils/helpers.dart';
 
 // ============================================================================
 // Main Message Bubble Widget
@@ -33,6 +34,7 @@ class MessageBubble extends StatefulWidget {
 
 class _MessageBubbleState extends State<MessageBubble> {
   bool _showThinking = false;
+  bool _showDetails = false;
 
   @override
   Widget build(BuildContext context) {
@@ -63,26 +65,26 @@ class _MessageBubbleState extends State<MessageBubble> {
           // For assistant messages, use flexible width
           widget.message.isUser
               ? Flexible(
-            child: Container(
-              constraints: BoxConstraints(
-                maxWidth: screenWidth * 0.4,
-              ),
-              padding: const EdgeInsets.all(12),
-              decoration: _buildBubbleDecoration(colorScheme),
-              child: _buildBubbleContent(),
-            ),
-          )
+                  child: Container(
+                    constraints: BoxConstraints(
+                      maxWidth: screenWidth * 0.4,
+                    ),
+                    padding: const EdgeInsets.all(12),
+                    decoration: _buildBubbleDecoration(colorScheme),
+                    child: _buildBubbleContent(),
+                  ),
+                )
               : Flexible(
-            child: Container(
-              constraints: BoxConstraints(
-                maxWidth: screenWidth * 0.9,
-                minWidth: 100,
-              ),
-              padding: const EdgeInsets.all(12),
-              decoration: _buildBubbleDecoration(colorScheme),
-              child: _buildBubbleContent(),
-            ),
-          ),
+                  child: Container(
+                    constraints: BoxConstraints(
+                      maxWidth: screenWidth * 0.9,
+                      minWidth: 100,
+                    ),
+                    padding: const EdgeInsets.all(12),
+                    decoration: _buildBubbleDecoration(colorScheme),
+                    child: _buildBubbleContent(),
+                  ),
+                ),
         ],
       ),
     );
@@ -119,6 +121,11 @@ class _MessageBubbleState extends State<MessageBubble> {
           isUser: widget.message.isUser,
           isDarkMode: widget.isDarkMode,
         ),
+        MessageDetailsDisclosure(
+          message: widget.message,
+          isExpanded: _showDetails,
+          onToggle: () => setState(() => _showDetails = !_showDetails),
+        ),
         if (!widget.message.isUser || widget.onEdit != null)
           MessageActionButtons(
             text: widget.message.text,
@@ -134,13 +141,14 @@ class _MessageBubbleState extends State<MessageBubble> {
       // User message - use primary color variants
       return BoxDecoration(
         color: colorScheme.primaryContainer,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
       );
     } else {
       // AI message - use surface variants
       return BoxDecoration(
-        color: colorScheme.surfaceContainerHighest.withOpacity(0.01),
-        borderRadius: BorderRadius.circular(12),
+        color: colorScheme.surfaceContainerHighest.withOpacity(0.55),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colorScheme.outlineVariant),
       );
     }
   }
@@ -202,12 +210,42 @@ class MarkdownContentWidget extends StatelessWidget {
 
   List<WidgetConfig> _buildHeadingConfigs(Color textColor) {
     return [
-      H1Config(style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: textColor, height: 1.3)),
-      H2Config(style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: textColor, height: 1.3)),
-      H3Config(style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textColor, height: 1.3)),
-      H4Config(style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: textColor, height: 1.3)),
-      H5Config(style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: textColor, height: 1.3)),
-      H6Config(style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: textColor, height: 1.3)),
+      H1Config(
+          style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: textColor,
+              height: 1.3)),
+      H2Config(
+          style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: textColor,
+              height: 1.3)),
+      H3Config(
+          style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: textColor,
+              height: 1.3)),
+      H4Config(
+          style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: textColor,
+              height: 1.3)),
+      H5Config(
+          style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: textColor,
+              height: 1.3)),
+      H6Config(
+          style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: textColor,
+              height: 1.3)),
     ];
   }
 
@@ -236,7 +274,8 @@ class MarkdownContentWidget extends StatelessWidget {
           width: 1,
         ),
       ),
-      textStyle: const TextStyle(fontSize: 13, fontFamily: 'monospace', height: 1.4),
+      textStyle:
+          const TextStyle(fontSize: 13, fontFamily: 'monospace', height: 1.4),
       wrapper: (child, code, language) => CodeBlockWrapper(
         child: child,
         code: code,
@@ -271,7 +310,8 @@ class MarkdownContentWidget extends StatelessWidget {
       String finalUrl = url.startsWith('http') ? url : 'https://$url';
       final uri = Uri.parse(finalUrl);
 
-      final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      final launched =
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
 
       if (!launched && context.mounted) {
         _showSnackBar(context, 'Could not open link: $url');
@@ -304,7 +344,8 @@ class MarkdownContentWidget extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
           child: Image.network(
             url,
-            errorBuilder: (context, error, stackTrace) => _buildImageError(theme),
+            errorBuilder: (context, error, stackTrace) =>
+                _buildImageError(theme),
           ),
         ),
       ),
@@ -376,7 +417,8 @@ class CopyCodeButton extends StatefulWidget {
   final String code;
   final bool isDarkMode;
 
-  const CopyCodeButton({super.key, required this.code, required this.isDarkMode});
+  const CopyCodeButton(
+      {super.key, required this.code, required this.isDarkMode});
 
   @override
   State<CopyCodeButton> createState() => _CopyCodeButtonState();
@@ -456,7 +498,10 @@ class FileAttachmentsWidget extends StatelessWidget {
       child: Wrap(
         spacing: 8,
         runSpacing: 8,
-        children: files.map((path) => FilePreviewWidget(filePath: path, isDarkMode: isDarkMode)).toList(),
+        children: files
+            .map((path) =>
+                FilePreviewWidget(filePath: path, isDarkMode: isDarkMode))
+            .toList(),
       ),
     );
   }
@@ -474,13 +519,15 @@ class FilePreviewWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final fileName = filePath.split('/').last;
-    final extension = filePath.toLowerCase().substring(filePath.lastIndexOf('.'));
-    final isImage = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'].contains(extension);
+    final fileName = FileAttachmentHelper.getFileName(filePath);
+    final extension = FileAttachmentHelper.extensionForPath(filePath);
+    final isImage =
+        FileAttachmentHelper.supportedImageExtensions.contains(extension);
 
     return isImage
         ? ImagePreviewWidget(filePath: filePath, fileName: fileName)
-        : DocumentPreviewWidget(fileName: fileName, extension: extension, isDarkMode: isDarkMode);
+        : DocumentPreviewWidget(
+            fileName: fileName, extension: extension, isDarkMode: isDarkMode);
   }
 }
 
@@ -511,7 +558,8 @@ class ImagePreviewWidget extends StatelessWidget {
           width: 150,
           height: 150,
           fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) => _buildErrorPreview(context),
+          errorBuilder: (context, error, stackTrace) =>
+              _buildErrorPreview(context),
         ),
       ),
     );
@@ -537,7 +585,8 @@ class ImagePreviewWidget extends StatelessWidget {
             padding: const EdgeInsets.all(8.0),
             child: Text(
               'File not found',
-              style: TextStyle(fontSize: 10, color: colorScheme.onErrorContainer),
+              style:
+                  TextStyle(fontSize: 10, color: colorScheme.onErrorContainer),
               textAlign: TextAlign.center,
             ),
           ),
@@ -583,7 +632,11 @@ class DocumentPreviewWidget extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(_getFileIcon(extension), style: const TextStyle(fontSize: 20)),
+          Icon(
+            FileAttachmentHelper.getFileIconData(extension),
+            size: 20,
+            color: colorScheme.primary,
+          ),
           const SizedBox(width: 8),
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 150),
@@ -596,14 +649,6 @@ class DocumentPreviewWidget extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  String _getFileIcon(String ext) {
-    if (ext == '.pdf') return '📄';
-    if (['.doc', '.docx'].contains(ext)) return '📝';
-    if (ext == '.txt') return '📃';
-    if (ext == '.md') return '📋';
-    return '📄';
   }
 }
 
@@ -694,6 +739,220 @@ class ThinkingSectionWidget extends StatelessWidget {
 }
 
 // ============================================================================
+// Message Details Disclosure
+// ============================================================================
+
+class MessageDetailsDisclosure extends StatelessWidget {
+  final ChatMessage message;
+  final bool isExpanded;
+  final VoidCallback onToggle;
+
+  const MessageDetailsDisclosure({
+    super.key,
+    required this.message,
+    required this.isExpanded,
+    required this.onToggle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainer.withOpacity(0.55),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            onTap: onToggle,
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    isExpanded
+                        ? Icons.keyboard_arrow_down_rounded
+                        : Icons.keyboard_arrow_right_rounded,
+                    size: 18,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Details',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${message.estimatedTokenCount} est. tokens',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (isExpanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: _MessageDetailsPanel(message: message),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MessageDetailsPanel extends StatelessWidget {
+  final ChatMessage message;
+
+  const _MessageDetailsPanel({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    final details = <_DetailRow>[
+      _DetailRow('Role', message.isUser ? 'user' : 'assistant'),
+      _DetailRow('Created', message.timestamp.toLocal().toIso8601String()),
+      _DetailRow('Characters', message.text.length.toString()),
+      _DetailRow('Estimated tokens', message.estimatedTokenCount.toString()),
+      if (message.modelName != null) _DetailRow('Model', message.modelName!),
+      if (message.thinkingText?.isNotEmpty == true)
+        _DetailRow(
+            'Thinking characters', message.thinkingText!.length.toString()),
+      if (message.attachedFiles?.isNotEmpty == true)
+        _DetailRow('Attachments', message.attachedFiles!.length.toString()),
+    ];
+
+    final customDetails = message.details;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ...details.map((row) => _DetailLine(row: row)),
+        if (message.attachedFiles?.isNotEmpty == true) ...[
+          const SizedBox(height: 8),
+          _DetailSectionTitle(title: 'Attached files'),
+          ...message.attachedFiles!.map(
+            (path) => _DetailLine(
+              row: _DetailRow(
+                FileAttachmentHelper.getFileIcon(path),
+                FileAttachmentHelper.getFileName(path),
+              ),
+            ),
+          ),
+        ],
+        if (customDetails != null && customDetails.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          _DetailSectionTitle(title: 'Ollama and request data'),
+          ..._flattenDetails(customDetails).map((row) => _DetailLine(row: row)),
+        ],
+      ],
+    );
+  }
+
+  List<_DetailRow> _flattenDetails(
+    Map<String, dynamic> source, [
+    String prefix = '',
+  ]) {
+    final rows = <_DetailRow>[];
+
+    source.forEach((key, value) {
+      final label = prefix.isEmpty ? key : '$prefix.$key';
+      if (value is Map) {
+        rows.addAll(_flattenDetails(Map<String, dynamic>.from(value), label));
+      } else if (value is List) {
+        rows.add(_DetailRow(label, value.map((item) => '$item').join(', ')));
+      } else {
+        rows.add(_DetailRow(label, '$value'));
+      }
+    });
+
+    return rows;
+  }
+}
+
+class _DetailRow {
+  final String label;
+  final String value;
+
+  const _DetailRow(this.label, this.value);
+}
+
+class _DetailLine extends StatelessWidget {
+  final _DetailRow row;
+
+  const _DetailLine({required this.row});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 150,
+            child: Text(
+              row.label,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: SelectableText(
+              row.value,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: colorScheme.onSurface.withOpacity(0.82),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DetailSectionTitle extends StatelessWidget {
+  final String title;
+
+  const _DetailSectionTitle({required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 2, bottom: 2),
+      child: Text(
+        title,
+        style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: colorScheme.primary,
+              fontWeight: FontWeight.w700,
+            ),
+      ),
+    );
+  }
+}
+
+// ============================================================================
 // Message Metadata Widget
 // ============================================================================
 
@@ -778,11 +1037,15 @@ class MessageActionButtons extends StatelessWidget {
           ),
           if (onEdit != null) ...[
             const SizedBox(width: 8),
-            _ActionButton(icon: Icons.edit, tooltip: 'Edit', onPressed: onEdit!),
+            _ActionButton(
+                icon: Icons.edit, tooltip: 'Edit', onPressed: onEdit!),
           ],
           if (onRegenerate != null) ...[
             const SizedBox(width: 8),
-            _ActionButton(icon: Icons.refresh, tooltip: 'Regenerate', onPressed: onRegenerate!),
+            _ActionButton(
+                icon: Icons.refresh,
+                tooltip: 'Regenerate',
+                onPressed: onRegenerate!),
           ],
         ],
       ),
@@ -792,7 +1055,8 @@ class MessageActionButtons extends StatelessWidget {
   void _copyToClipboard(BuildContext context) {
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Copied to clipboard'), duration: Duration(seconds: 1)),
+      const SnackBar(
+          content: Text('Copied to clipboard'), duration: Duration(seconds: 1)),
     );
   }
 }

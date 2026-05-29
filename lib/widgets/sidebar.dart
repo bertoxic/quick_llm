@@ -9,6 +9,7 @@ class Sidebar extends StatefulWidget {
   final List<Conversation> conversations;
   final int? selectedConversationIndex;
   final int? generatingConversationIndex;
+  final Set<int> generatingConversationIndices;
   final VoidCallback onNewChat;
   final Function(int) onLoadConversation;
   final Function(int) onDeleteConversation;
@@ -25,6 +26,7 @@ class Sidebar extends StatefulWidget {
     required this.conversations,
     required this.selectedConversationIndex,
     this.generatingConversationIndex,
+    this.generatingConversationIndices = const {},
     required this.onNewChat,
     required this.onLoadConversation,
     required this.onDeleteConversation,
@@ -87,7 +89,8 @@ class _SidebarState extends State<Sidebar> with SingleTickerProviderStateMixin {
                 color: colorScheme.primaryContainer,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Icon(Icons.info_outline, color: colorScheme.onPrimaryContainer, size: 24),
+              child: Icon(Icons.info_outline,
+                  color: colorScheme.onPrimaryContainer, size: 24),
             ),
             const SizedBox(width: 12),
             const Text('About Quick LLM'),
@@ -122,17 +125,19 @@ class _SidebarState extends State<Sidebar> with SingleTickerProviderStateMixin {
               (Icons.security, 'Privacy-Focused'),
               (Icons.splitscreen, 'Split Screen Support'),
             ].map((item) => Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
-                children: [
-                  Icon(item.$1, size: 16, color: colorScheme.onSurfaceVariant),
-                  const SizedBox(width: 8),
-                  Text(item.$2, style: theme.textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurface,
-                  )),
-                ],
-              ),
-            )),
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      Icon(item.$1,
+                          size: 16, color: colorScheme.onSurfaceVariant),
+                      const SizedBox(width: 8),
+                      Text(item.$2,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurface,
+                          )),
+                    ],
+                  ),
+                )),
           ],
         ),
         actions: [
@@ -161,7 +166,8 @@ class _SidebarState extends State<Sidebar> with SingleTickerProviderStateMixin {
                 color: colorScheme.errorContainer,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Icon(Icons.warning_amber_rounded, color: colorScheme.error, size: 24),
+              child: Icon(Icons.warning_amber_rounded,
+                  color: colorScheme.error, size: 24),
             ),
             const SizedBox(width: 12),
             const Text('Clear All Conversations?'),
@@ -238,7 +244,8 @@ class _SidebarState extends State<Sidebar> with SingleTickerProviderStateMixin {
                 color: colorScheme.primaryContainer,
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: Icon(Icons.splitscreen, color: colorScheme.onPrimaryContainer, size: 24),
+              child: Icon(Icons.splitscreen,
+                  color: colorScheme.onPrimaryContainer, size: 24),
             ),
             const SizedBox(width: 12),
             const Text('Enable Split Mode'),
@@ -312,7 +319,9 @@ class _SidebarState extends State<Sidebar> with SingleTickerProviderStateMixin {
   List<Conversation> get _filteredConversations {
     if (_searchQuery.isEmpty) return widget.conversations;
     final query = _searchQuery.toLowerCase();
-    return widget.conversations.where((conv) => conv.title.toLowerCase().contains(query)).toList();
+    return widget.conversations
+        .where((conv) => conv.title.toLowerCase().contains(query))
+        .toList();
   }
 
   @override
@@ -350,20 +359,23 @@ class _SidebarState extends State<Sidebar> with SingleTickerProviderStateMixin {
           ElevatedButton.icon(
             onPressed: widget.onNewChat,
             icon: const Icon(Icons.add_rounded, size: 22),
-            label: const Text('New Chat', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+            label: const Text('New Chat',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
             style: ElevatedButton.styleFrom(
               minimumSize: const Size(double.infinity, 48),
               foregroundColor: colorScheme.onPrimary,
               backgroundColor: colorScheme.primary,
               elevation: 2,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
             ),
           ),
           if (widget.isSplitMode)
             Padding(
               padding: const EdgeInsets.only(top: 8.0),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                 decoration: BoxDecoration(
                   color: colorScheme.tertiaryContainer,
                   borderRadius: BorderRadius.circular(8),
@@ -372,7 +384,8 @@ class _SidebarState extends State<Sidebar> with SingleTickerProviderStateMixin {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.splitscreen, size: 16, color: colorScheme.onTertiaryContainer),
+                    Icon(Icons.splitscreen,
+                        size: 16, color: colorScheme.onTertiaryContainer),
                     const SizedBox(width: 8),
                     Text(
                       'Split Mode Active',
@@ -407,39 +420,6 @@ class _SidebarState extends State<Sidebar> with SingleTickerProviderStateMixin {
               child: Column(
                 children: [
                   if (widget.conversations.length > 5) _buildSearchBar(),
-                  if (widget.onEnableSplitMode != null && !widget.isSplitMode)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.info_outline,
-                              size: 14,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                'Long press & drag to split screen',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Theme.of(context).colorScheme.primary,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
                   Expanded(
                     child: _buildConversationList(),
                   ),
@@ -471,7 +451,9 @@ class _SidebarState extends State<Sidebar> with SingleTickerProviderStateMixin {
             children: [
               Icon(icon, size: 18, color: colorScheme.primary),
               const SizedBox(width: 10),
-              Text(title, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+              Text(title,
+                  style: theme.textTheme.titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w600)),
               const SizedBox(width: 6),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
@@ -491,7 +473,8 @@ class _SidebarState extends State<Sidebar> with SingleTickerProviderStateMixin {
               AnimatedRotation(
                 turns: isExpanded ? 0.5 : 0,
                 duration: const Duration(milliseconds: 300),
-                child: Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: colorScheme.onSurfaceVariant),
+                child: Icon(Icons.keyboard_arrow_down_rounded,
+                    size: 20, color: colorScheme.onSurfaceVariant),
               ),
             ],
           ),
@@ -513,13 +496,15 @@ class _SidebarState extends State<Sidebar> with SingleTickerProviderStateMixin {
           hintStyle: theme.textTheme.bodySmall?.copyWith(
             color: colorScheme.onSurfaceVariant,
           ),
-          prefixIcon: Icon(Icons.search, size: 20, color: colorScheme.onSurfaceVariant),
+          prefixIcon:
+              Icon(Icons.search, size: 20, color: colorScheme.onSurfaceVariant),
           suffixIcon: _searchQuery.isNotEmpty
               ? IconButton(
-            icon: Icon(Icons.clear, size: 18, color: colorScheme.onSurfaceVariant),
-            onPressed: () => setState(() => _searchQuery = ''),
-            padding: EdgeInsets.zero,
-          )
+                  icon: Icon(Icons.clear,
+                      size: 18, color: colorScheme.onSurfaceVariant),
+                  onPressed: () => setState(() => _searchQuery = ''),
+                  padding: EdgeInsets.zero,
+                )
               : null,
           filled: true,
           fillColor: colorScheme.surfaceContainerHighest,
@@ -527,7 +512,8 @@ class _SidebarState extends State<Sidebar> with SingleTickerProviderStateMixin {
             borderRadius: BorderRadius.circular(10),
             borderSide: BorderSide.none,
           ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           isDense: true,
         ),
         style: theme.textTheme.bodyMedium,
@@ -569,8 +555,9 @@ class _SidebarState extends State<Sidebar> with SingleTickerProviderStateMixin {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isSelected = widget.selectedConversationIndex == index;
-    final isGenerating = widget.generatingConversationIndex == index;
-    final canDrag = widget.onEnableSplitMode != null && !widget.isSplitMode;
+    final isGenerating = widget.generatingConversationIndex == index ||
+        widget.generatingConversationIndices.contains(index);
+    final canDrag = widget.onEnableSplitMode != null;
 
     Widget tile = Dismissible(
       key: ValueKey(conv.timestamp),
@@ -622,7 +609,8 @@ class _SidebarState extends State<Sidebar> with SingleTickerProviderStateMixin {
                       conv.title,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
+                      style: theme.textTheme.bodyMedium
+                          ?.copyWith(fontWeight: FontWeight.w600),
                     ),
                   ),
                 ],
@@ -631,7 +619,6 @@ class _SidebarState extends State<Sidebar> with SingleTickerProviderStateMixin {
           ),
         ),
         childWhenDragging: Opacity(opacity: 0.3, child: tile),
-        onDragEnd: (details) => _showSplitModeDialog(index),
         child: tile,
       );
     }
@@ -646,7 +633,8 @@ class _SidebarState extends State<Sidebar> with SingleTickerProviderStateMixin {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Conversation'),
-        content: const Text('Are you sure you want to delete this conversation?'),
+        content:
+            const Text('Are you sure you want to delete this conversation?'),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         actions: [
           TextButton(
@@ -666,7 +654,8 @@ class _SidebarState extends State<Sidebar> with SingleTickerProviderStateMixin {
     );
   }
 
-  Widget _buildTileContent(int index, Conversation conv, bool isSelected, bool isGenerating, bool showDragHandle) {
+  Widget _buildTileContent(int index, Conversation conv, bool isSelected,
+      bool isGenerating, bool showDragHandle) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
@@ -693,12 +682,15 @@ class _SidebarState extends State<Sidebar> with SingleTickerProviderStateMixin {
               ),
               boxShadow: isSelected || isGenerating
                   ? [
-                BoxShadow(
-                  color: (isGenerating ? colorScheme.tertiary : colorScheme.primary).withOpacity(0.2),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                )
-              ]
+                      BoxShadow(
+                        color: (isGenerating
+                                ? colorScheme.tertiary
+                                : colorScheme.primary)
+                            .withOpacity(0.2),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      )
+                    ]
                   : null,
             ),
             child: Column(
@@ -709,7 +701,8 @@ class _SidebarState extends State<Sidebar> with SingleTickerProviderStateMixin {
                     if (showDragHandle)
                       Padding(
                         padding: const EdgeInsets.only(right: 8),
-                        child: Icon(Icons.drag_indicator, size: 18, color: colorScheme.onSurfaceVariant),
+                        child: Icon(Icons.drag_indicator,
+                            size: 18, color: colorScheme.onSurfaceVariant),
                       ),
                     Expanded(
                       child: Text(
@@ -717,9 +710,12 @@ class _SidebarState extends State<Sidebar> with SingleTickerProviderStateMixin {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodyMedium?.copyWith(
-                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+                          fontWeight:
+                              isSelected ? FontWeight.w600 : FontWeight.w500,
                           height: 1.3,
-                          color: isSelected ? colorScheme.onPrimaryContainer : colorScheme.onSurface,
+                          color: isSelected
+                              ? colorScheme.onPrimaryContainer
+                              : colorScheme.onSurface,
                         ),
                       ),
                     ),
@@ -728,7 +724,8 @@ class _SidebarState extends State<Sidebar> with SingleTickerProviderStateMixin {
                 ),
                 const SizedBox(height: 8),
                 _buildMetadata(conv),
-                if (isGenerating) GeneratingIndicator(isDarkMode: widget.isDarkMode),
+                if (isGenerating)
+                  GeneratingIndicator(isDarkMode: widget.isDarkMode),
               ],
             ),
           ),
@@ -743,7 +740,8 @@ class _SidebarState extends State<Sidebar> with SingleTickerProviderStateMixin {
 
     return Row(
       children: [
-        Icon(Icons.schedule_rounded, size: 12, color: colorScheme.onSurfaceVariant),
+        Icon(Icons.schedule_rounded,
+            size: 12, color: colorScheme.onSurfaceVariant),
         const SizedBox(width: 4),
         Expanded(
           child: Text(
@@ -763,7 +761,8 @@ class _SidebarState extends State<Sidebar> with SingleTickerProviderStateMixin {
           ),
           child: Row(
             children: [
-              Icon(Icons.chat_bubble_rounded, size: 10, color: colorScheme.onSurfaceVariant),
+              Icon(Icons.chat_bubble_rounded,
+                  size: 10, color: colorScheme.onSurfaceVariant),
               const SizedBox(width: 4),
               Text(
                 '${conv.messageCount}',
@@ -783,7 +782,8 @@ class _SidebarState extends State<Sidebar> with SingleTickerProviderStateMixin {
     final colorScheme = Theme.of(context).colorScheme;
 
     return PopupMenuButton<String>(
-      icon: Icon(Icons.more_vert_rounded, size: 18, color: colorScheme.onSurfaceVariant),
+      icon: Icon(Icons.more_vert_rounded,
+          size: 18, color: colorScheme.onSurfaceVariant),
       padding: EdgeInsets.zero,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       offset: const Offset(-10, 30),
@@ -810,7 +810,8 @@ class _SidebarState extends State<Sidebar> with SingleTickerProviderStateMixin {
               children: [
                 Icon(Icons.splitscreen, size: 18, color: colorScheme.primary),
                 const SizedBox(width: 12),
-                const Text('Open in Split View', style: TextStyle(fontSize: 14)),
+                const Text('Open in Split View',
+                    style: TextStyle(fontSize: 14)),
               ],
             ),
           ),
@@ -818,7 +819,8 @@ class _SidebarState extends State<Sidebar> with SingleTickerProviderStateMixin {
           value: 'export',
           child: Row(
             children: [
-              Icon(Icons.download_rounded, size: 18, color: colorScheme.tertiary),
+              Icon(Icons.download_rounded,
+                  size: 18, color: colorScheme.tertiary),
               const SizedBox(width: 12),
               const Text('Export', style: TextStyle(fontSize: 14)),
             ],
@@ -830,14 +832,14 @@ class _SidebarState extends State<Sidebar> with SingleTickerProviderStateMixin {
             children: [
               Icon(Icons.delete_rounded, size: 18, color: colorScheme.error),
               const SizedBox(width: 12),
-              Text('Delete', style: TextStyle(fontSize: 14, color: colorScheme.error)),
+              Text('Delete',
+                  style: TextStyle(fontSize: 14, color: colorScheme.error)),
             ],
           ),
         ),
       ],
     );
   }
-
 
   Widget _buildSettingsSection() {
     final theme = Theme.of(context);
@@ -857,12 +859,15 @@ class _SidebarState extends State<Sidebar> with SingleTickerProviderStateMixin {
             padding: const EdgeInsets.all(16.0),
             decoration: BoxDecoration(
               color: colorScheme.surfaceContainerHighest.withOpacity(0.5),
-              border: Border(top: BorderSide(color: colorScheme.outlineVariant)),
+              border:
+                  Border(top: BorderSide(color: colorScheme.outlineVariant)),
             ),
             child: Column(
               children: [
                 _buildSettingTile(
-                  icon: widget.isDarkMode ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
+                  icon: widget.isDarkMode
+                      ? Icons.dark_mode_rounded
+                      : Icons.light_mode_rounded,
                   iconColor: colorScheme.secondary,
                   title: 'Dark Mode',
                   trailing: Switch(
@@ -877,28 +882,34 @@ class _SidebarState extends State<Sidebar> with SingleTickerProviderStateMixin {
                   icon: Icons.cloud_download_rounded,
                   iconColor: colorScheme.primary,
                   title: 'Export All',
-      trailing: Icon(Icons.chevron_right_rounded, size: 20, color: Colors.grey[600]),
-      onTap: widget.onExportAll,
-    ),
-      const SizedBox(height: 4),
-      _buildSettingTile(
-        icon: Icons.delete_sweep_rounded,
-        iconColor: widget.isDarkMode ? Colors.red[300]! : Colors.red[700]!,
-        title: 'Clear All',
-        trailing: Icon(Icons.chevron_right_rounded, size: 20, color: Colors.grey[600]),
-        onTap: _showClearAllDialog,
-      ),
-      const SizedBox(height: 4),
-      _buildSettingTile(
-        icon: Icons.info_outline_rounded,
-        iconColor: widget.isDarkMode ? Colors.purple[300]! : Colors.purple[700]!,
-        title: 'About',
-        trailing: Icon(Icons.chevron_right_rounded, size: 20, color: Colors.grey[600]),
-        onTap: _showAboutDialog,
-      ),
-    ],
-    ),
-    ),
+                  trailing: Icon(Icons.chevron_right_rounded,
+                      size: 20, color: Colors.grey[600]),
+                  onTap: widget.onExportAll,
+                ),
+                const SizedBox(height: 4),
+                _buildSettingTile(
+                  icon: Icons.delete_sweep_rounded,
+                  iconColor:
+                      widget.isDarkMode ? Colors.red[300]! : Colors.red[700]!,
+                  title: 'Clear All',
+                  trailing: Icon(Icons.chevron_right_rounded,
+                      size: 20, color: Colors.grey[600]),
+                  onTap: _showClearAllDialog,
+                ),
+                const SizedBox(height: 4),
+                _buildSettingTile(
+                  icon: Icons.info_outline_rounded,
+                  iconColor: widget.isDarkMode
+                      ? Colors.purple[300]!
+                      : Colors.purple[700]!,
+                  title: 'About',
+                  trailing: Icon(Icons.chevron_right_rounded,
+                      size: 20, color: Colors.grey[600]),
+                  onTap: _showAboutDialog,
+                ),
+              ],
+            ),
+          ),
       ],
     );
   }
@@ -931,7 +942,8 @@ class _SidebarState extends State<Sidebar> with SingleTickerProviderStateMixin {
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.w500),
                 ),
               ),
               trailing,

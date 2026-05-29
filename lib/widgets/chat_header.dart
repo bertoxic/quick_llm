@@ -33,7 +33,8 @@ class ChatHeader extends StatefulWidget {
   State<ChatHeader> createState() => _ChatHeaderState();
 }
 
-class _ChatHeaderState extends State<ChatHeader> with SingleTickerProviderStateMixin {
+class _ChatHeaderState extends State<ChatHeader>
+    with SingleTickerProviderStateMixin {
   late AnimationController _refreshController;
   bool _isRefreshing = false;
 
@@ -243,7 +244,9 @@ class _ChatHeaderState extends State<ChatHeader> with SingleTickerProviderStateM
         ),
         const SizedBox(width: 4),
         _buildActionButton(
-          icon: widget.isAlwaysOnTop ? Icons.push_pin_rounded : Icons.push_pin_outlined,
+          icon: widget.isAlwaysOnTop
+              ? Icons.push_pin_rounded
+              : Icons.push_pin_outlined,
           tooltip: 'Always on top',
           onTap: widget.onToggleAlwaysOnTop,
           isActive: widget.isAlwaysOnTop,
@@ -283,13 +286,12 @@ class _ChatHeaderState extends State<ChatHeader> with SingleTickerProviderStateM
 
     final backgroundColor = isActive
         ? (activeColor != null
-        ? activeColor.withOpacity(0.15)
-        : colorScheme.primaryContainer)
+            ? activeColor.withOpacity(0.15)
+            : colorScheme.primaryContainer)
         : colorScheme.surfaceContainerHighest;
 
-    final borderColor = isActive
-        ? (activeColor ?? colorScheme.primary)
-        : Colors.transparent;
+    final borderColor =
+        isActive ? (activeColor ?? colorScheme.primary) : Colors.transparent;
 
     return Tooltip(
       message: tooltip,
@@ -312,9 +314,9 @@ class _ChatHeaderState extends State<ChatHeader> with SingleTickerProviderStateM
               padding: const EdgeInsets.all(8),
               child: useAnimation && _isRefreshing
                   ? RotationTransition(
-                turns: _refreshController,
-                child: Icon(icon, size: 20, color: color),
-              )
+                      turns: _refreshController,
+                      child: Icon(icon, size: 20, color: color),
+                    )
                   : Icon(icon, size: 20, color: color),
             ),
           ),

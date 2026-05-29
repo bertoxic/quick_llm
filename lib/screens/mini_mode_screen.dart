@@ -82,7 +82,8 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
     );
 
     provider.updateConversation(index, updatedConv);
-    debugPrint('💾 Synced ${provider.messages.length} messages to conversation $index');
+    debugPrint(
+        '💾 Synced ${provider.messages.length} messages to conversation $index');
   }
 
   Future<void> _sendMessage() async {
@@ -136,9 +137,9 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
 
       for (int i = 0; i < messages.length; i++) {
         final msg = messages[i];
-        conversationHistory.write(
-            msg.isUser ? 'User: ${msg.text}\n\n' : 'Assistant: ${msg.text}\n\n'
-        );
+        conversationHistory.write(msg.isUser
+            ? 'User: ${msg.text}\n\n'
+            : 'Assistant: ${msg.text}\n\n');
       }
 
       final fullPrompt = conversationHistory.isEmpty
@@ -158,7 +159,9 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
         provider: provider,
         generatingForIndex: generatingForConversationIndex,
         onUpdate: () {
-          if (mounted && provider.selectedConversationIndex == generatingForConversationIndex) {
+          if (mounted &&
+              provider.selectedConversationIndex ==
+                  generatingForConversationIndex) {
             setState(() {});
             _scrollToBottom();
           }
@@ -176,7 +179,6 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
       if (mounted) {
         _syncMessagesToConversation(provider);
       }
-
     } catch (e) {
       debugPrint('❌ Mini mode error: $e');
       if (mounted) {
@@ -242,8 +244,9 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
     if (provider.messages.isEmpty) return;
 
     final lastAssistant = provider.messages.lastWhere(
-          (m) => !m.isUser,
-      orElse: () => ChatMessage(text: '', isUser: false, timestamp: DateTime.now()),
+      (m) => !m.isUser,
+      orElse: () =>
+          ChatMessage(text: '', isUser: false, timestamp: DateTime.now()),
     );
 
     if (lastAssistant.text.isNotEmpty) {
@@ -330,17 +333,14 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
     );
   }
 
-  Color get _backgroundColor => widget.isDarkMode
-      ? const Color(0xFF1E1E1E)
-      : const Color(0xFFF5F5F5);
+  Color get _backgroundColor =>
+      widget.isDarkMode ? const Color(0xFF1E1E1E) : const Color(0xFFF5F5F5);
 
-  Color get _surfaceColor => widget.isDarkMode
-      ? const Color(0xFF2A2A2A)
-      : Colors.white;
+  Color get _surfaceColor =>
+      widget.isDarkMode ? const Color(0xFF2A2A2A) : Colors.white;
 
-  Color get _accentColor => widget.isDarkMode
-      ? Colors.blue[400]!
-      : Colors.blue[600]!;
+  Color get _accentColor =>
+      widget.isDarkMode ? Colors.blue[400]! : Colors.blue[600]!;
 
   @override
   Widget build(BuildContext context) {
@@ -464,7 +464,8 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
                 color: _accentColor.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
-              child: Icon(Icons.chat_bubble_outline, size: 36, color: _accentColor),
+              child: Icon(Icons.chat_bubble_outline,
+                  size: 36, color: _accentColor),
             ),
             const SizedBox(height: 12),
             Text(
@@ -542,11 +543,14 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
               ),
               const SizedBox(width: 8),
               Text(
-                message.isUser ? 'You' : (provider.selectedModel?.split(':').first ?? 'Assistant'),
+                message.isUser
+                    ? 'You'
+                    : (provider.selectedModel?.split(':').first ?? 'Assistant'),
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
-                  color: widget.isDarkMode ? Colors.grey[300] : Colors.grey[800],
+                  color:
+                      widget.isDarkMode ? Colors.grey[300] : Colors.grey[800],
                 ),
               ),
               const SizedBox(width: 6),
@@ -574,11 +578,10 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
             isDarkMode: widget.isDarkMode,
             useFullWidth: true, // Enable full-width mode for mini mode
             onEdit: message.isUser ? () => _editMessage(index) : null,
-            onRegenerate: !message.isUser &&
-                isLastMessage &&
-                !provider.isGenerating
-                ? _regenerateLastResponse
-                : null,
+            onRegenerate:
+                !message.isUser && isLastMessage && !provider.isGenerating
+                    ? _regenerateLastResponse
+                    : null,
           ),
         ],
       ),
@@ -628,13 +631,17 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                     borderSide: BorderSide(
-                      color: widget.isDarkMode ? Colors.grey[700]! : Colors.grey[300]!,
+                      color: widget.isDarkMode
+                          ? Colors.grey[700]!
+                          : Colors.grey[300]!,
                     ),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                     borderSide: BorderSide(
-                      color: widget.isDarkMode ? Colors.grey[700]! : Colors.grey[300]!,
+                      color: widget.isDarkMode
+                          ? Colors.grey[700]!
+                          : Colors.grey[300]!,
                     ),
                   ),
                   focusedBorder: OutlineInputBorder(
@@ -650,7 +657,8 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
                 style: const TextStyle(fontSize: 13),
                 maxLines: null,
                 textInputAction: TextInputAction.send,
-                onSubmitted: (_) => provider.isGenerating ? null : _sendMessage(),
+                onSubmitted: (_) =>
+                    provider.isGenerating ? null : _sendMessage(),
                 enabled: !provider.isGenerating,
               ),
             ),
@@ -662,7 +670,8 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
               borderRadius: BorderRadius.circular(8),
             ),
             child: IconButton(
-              icon: Icon(provider.isGenerating ? Icons.stop : Icons.send, size: 18),
+              icon: Icon(provider.isGenerating ? Icons.stop : Icons.send,
+                  size: 18),
               onPressed: provider.isGenerating ? _stopGeneration : _sendMessage,
               color: Colors.white,
               padding: const EdgeInsets.all(8),

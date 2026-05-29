@@ -10,7 +10,6 @@ import '../models/conversation.dart';
 /// Service for handling all persistent storage operations
 /// Uses SharedPreferences for settings and file system for exports
 class StorageService {
-
   // ============= PREFERENCES =============
 
   /// Loads all user preferences from SharedPreferences
@@ -22,6 +21,7 @@ class StorageService {
       'systemPrompt': prefs.getString('systemPrompt') ?? '',
       'temperature': prefs.getDouble('temperature') ?? 0.7,
       'maxTokens': prefs.getInt('maxTokens') ?? 2048,
+      'numCtx': prefs.getInt('numCtx') ?? 32768,
       'useSystemPrompt': prefs.getBool('useSystemPrompt') ?? false,
       'monitorClipboard': prefs.getBool('monitorClipboard') ?? false,
       'copyFileAttachments': prefs.getBool('copyFileAttachments') ?? true,
@@ -45,6 +45,9 @@ class StorageService {
     if (preferences.containsKey('maxTokens')) {
       await prefs.setInt('maxTokens', preferences['maxTokens']);
     }
+    if (preferences.containsKey('numCtx')) {
+      await prefs.setInt('numCtx', preferences['numCtx']);
+    }
     if (preferences.containsKey('useSystemPrompt')) {
       await prefs.setBool('useSystemPrompt', preferences['useSystemPrompt']);
     }
@@ -52,7 +55,8 @@ class StorageService {
       await prefs.setBool('monitorClipboard', preferences['monitorClipboard']);
     }
     if (preferences.containsKey('copyFileAttachments')) {
-      await prefs.setBool('copyFileAttachments', preferences['copyFileAttachments']);
+      await prefs.setBool(
+          'copyFileAttachments', preferences['copyFileAttachments']);
     }
   }
 
@@ -130,7 +134,8 @@ class StorageService {
 
   /// Cleanup: Removes orphaned attachment files that aren't referenced in any conversation
   /// Call this periodically or on app startup to free up space
-  Future<int> cleanupOrphanedAttachments(List<Conversation> conversations) async {
+  Future<int> cleanupOrphanedAttachments(
+      List<Conversation> conversations) async {
     try {
       final directory = await getApplicationDocumentsDirectory();
       final attachmentsDir = Directory('${directory.path}/attachments');
@@ -191,9 +196,8 @@ class StorageService {
   Future<void> saveConversations(List<Conversation> conversations) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final conversationsJson = conversations
-          .map((conv) => jsonEncode(conv.toJson()))
-          .toList();
+      final conversationsJson =
+          conversations.map((conv) => jsonEncode(conv.toJson())).toList();
       await prefs.setStringList('conversations', conversationsJson);
     } catch (e) {
       print('Error saving conversations: $e');
@@ -365,7 +369,8 @@ class StorageService {
 
   /// Exports all conversations to a single JSON file in quick_llm folder
   /// Returns the file path where it was saved
-  Future<String> exportAllConversations(List<Conversation> conversations) async {
+  Future<String> exportAllConversations(
+      List<Conversation> conversations) async {
     final exportDir = await _getExportDirectory();
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final file = File('${exportDir.path}/all_conversations_$timestamp.json');

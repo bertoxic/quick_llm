@@ -52,7 +52,8 @@ class ChatProvider with ChangeNotifier {
   bool get useSystemPrompt => _useSystemPrompt;
   bool get isDarkMode => _isDarkMode;
   bool get isSidebarVisible => _isSidebarVisible;
-  bool get hasValidModel => _selectedModel != null && _selectedModel!.isNotEmpty;
+  bool get hasValidModel =>
+      _selectedModel != null && _selectedModel!.isNotEmpty;
 
   // Message operations
   void addMessage(ChatMessage message) {
@@ -78,13 +79,14 @@ class ChatProvider with ChangeNotifier {
     _messages.clear();
     notifyListeners();
   }
+
   void setNumCtx(int value) {
     _numCtx = value;
-    print('✅ Context window updated: $_numCtx tokens');
     notifyListeners();
   }
 
   int get nu => _numCtx;
+  int get numCtx => _numCtx;
 
   void setMessages(List<ChatMessage> messages) {
     _messages = List.from(messages);
@@ -124,7 +126,8 @@ class ChatProvider with ChangeNotifier {
       if (_selectedConversationIndex == index) {
         _selectedConversationIndex = null;
         clearMessages();
-      } else if (_selectedConversationIndex != null && _selectedConversationIndex! > index) {
+      } else if (_selectedConversationIndex != null &&
+          _selectedConversationIndex! > index) {
         _selectedConversationIndex = _selectedConversationIndex! - 1;
       }
       // Notify that indices have shifted
@@ -218,6 +221,7 @@ class ChatProvider with ChangeNotifier {
     bool? useSystemPrompt,
     bool? isDarkMode,
     bool? isSidebarVisible,
+    int? numCtx,
   }) {
     if (model != null) _selectedModel = model;
     if (temperature != null) _temperature = temperature;
@@ -226,6 +230,7 @@ class ChatProvider with ChangeNotifier {
     if (useSystemPrompt != null) _useSystemPrompt = useSystemPrompt;
     if (isDarkMode != null) _isDarkMode = isDarkMode;
     if (isSidebarVisible != null) _isSidebarVisible = isSidebarVisible;
+    if (numCtx != null) _numCtx = numCtx;
     notifyListeners();
   }
 

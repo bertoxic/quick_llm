@@ -56,7 +56,8 @@ class _TypingIndicatorState extends State<TypingIndicator>
                   : Colors.blue[100],
               shape: BoxShape.circle,
               border: Border.all(
-                color: widget.isDarkMode ? Colors.blue[600]! : Colors.blue[300]!,
+                color:
+                    widget.isDarkMode ? Colors.blue[600]! : Colors.blue[300]!,
                 width: 2,
               ),
             ),
@@ -77,9 +78,8 @@ class _TypingIndicatorState extends State<TypingIndicator>
                     : Colors.grey[200],
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: widget.isDarkMode
-                      ? Colors.grey[700]!
-                      : Colors.grey[300]!,
+                  color:
+                      widget.isDarkMode ? Colors.grey[700]! : Colors.grey[300]!,
                   width: 1,
                 ),
               ),
@@ -158,7 +158,6 @@ class _TypingIndicatorState extends State<TypingIndicator>
     );
   }
 }
-
 
 /// Animated "Generating..." indicator for conversations
 class GeneratingIndicator extends StatefulWidget {

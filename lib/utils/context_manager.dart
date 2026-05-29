@@ -26,7 +26,8 @@ class ContextManager {
     required int maxContextTokens,
     String strategy = 'smart',
     bool includeCurrentMessage = false,
-    int recentMessagesToProtect = 4, // Always include last 4 messages completely (2 exchanges)
+    int recentMessagesToProtect =
+        4, // Always include last 4 messages completely (2 exchanges)
   }) {
     if (messages.isEmpty) return '';
 
@@ -39,50 +40,56 @@ class ContextManager {
 
     switch (strategy) {
       case 'sliding_window':
-        return _buildSlidingWindow(messagesToProcess, maxContextTokens, recentMessagesToProtect);
+        return _buildSlidingWindow(
+            messagesToProcess, maxContextTokens, recentMessagesToProtect);
       case 'token_based':
-        return _buildTokenBased(messagesToProcess, maxContextTokens, recentMessagesToProtect);
+        return _buildTokenBased(
+            messagesToProcess, maxContextTokens, recentMessagesToProtect);
       case 'hybrid':
-        return _buildHybrid(messagesToProcess, maxContextTokens, recentMessagesToProtect);
+        return _buildHybrid(
+            messagesToProcess, maxContextTokens, recentMessagesToProtect);
       case 'smart':
-        return _buildSmart(messagesToProcess, maxContextTokens, recentMessagesToProtect);
+        return _buildSmart(
+            messagesToProcess, maxContextTokens, recentMessagesToProtect);
       default:
-        return _buildSmart(messagesToProcess, maxContextTokens, recentMessagesToProtect);
+        return _buildSmart(
+            messagesToProcess, maxContextTokens, recentMessagesToProtect);
     }
   }
 
   /// Strategy 1: Sliding Window (keep last N messages)
   static String _buildSlidingWindow(
-      List<ChatMessage> messages,
-      int maxTokens,
-      int recentMessagesToProtect,
-      ) {
+    List<ChatMessage> messages,
+    int maxTokens,
+    int recentMessagesToProtect,
+  ) {
     const maxMessages = 20; // Configurable window size
-    final startIndex = messages.length > maxMessages
-        ? messages.length - maxMessages
-        : 0;
+    final startIndex =
+        messages.length > maxMessages ? messages.length - maxMessages : 0;
 
     final conversationHistory = StringBuffer();
     int totalTokens = 0;
 
     for (int i = startIndex; i < messages.length; i++) {
       final msg = messages[i];
-      final msgText = msg.isUser ? 'User: ${msg.text}\n\n' : 'Assistant: ${msg.text}\n\n';
+      final msgText =
+          msg.isUser ? 'User: ${msg.text}\n\n' : 'Assistant: ${msg.text}\n\n';
       conversationHistory.write(msgText);
       totalTokens += estimateTokens(msg.text);
     }
 
-    debugPrint('📊 Sliding Window: ${messages.length - startIndex} messages, ~$totalTokens tokens');
+    debugPrint(
+        '📊 Sliding Window: ${messages.length - startIndex} messages, ~$totalTokens tokens');
     return conversationHistory.toString();
   }
 
   /// Strategy 2: Token-Based (keep as many messages as fit in token budget)
   /// PROTECTED: Last N messages are ALWAYS included completely
   static String _buildTokenBased(
-      List<ChatMessage> messages,
-      int maxTokens,
-      int recentMessagesToProtect,
-      ) {
+    List<ChatMessage> messages,
+    int maxTokens,
+    int recentMessagesToProtect,
+  ) {
     if (messages.isEmpty) return '';
 
     // STEP 1: Reserve space for recent messages (always include them completely)
@@ -135,7 +142,8 @@ class ContextManager {
     // Add ellipsis if we skipped messages
     if (selectedOlderMessages.length < olderMessages.length) {
       final skipped = olderMessages.length - selectedOlderMessages.length;
-      conversationHistory.write('[... $skipped earlier messages omitted ...]\n\n');
+      conversationHistory
+          .write('[... $skipped earlier messages omitted ...]\n\n');
     }
 
     // Add protected recent messages (ALWAYS COMPLETE)
@@ -148,8 +156,10 @@ class ContextManager {
     }
 
     final totalTokens = olderTokens + recentTokens;
-    debugPrint('📊 Token-Based: $totalTokens tokens ($olderTokens older + $recentTokens recent)');
-    debugPrint('📝 Messages: ${selectedOlderMessages.length} older + $recentCount recent = ${selectedOlderMessages.length + recentCount} total');
+    debugPrint(
+        '📊 Token-Based: $totalTokens tokens ($olderTokens older + $recentTokens recent)');
+    debugPrint(
+        '📝 Messages: ${selectedOlderMessages.length} older + $recentCount recent = ${selectedOlderMessages.length + recentCount} total');
 
     return conversationHistory.toString();
   }
@@ -157,10 +167,10 @@ class ContextManager {
   /// Strategy 3: Hybrid (keep first message + recent messages)
   /// PROTECTED: Last N messages are ALWAYS included completely
   static String _buildHybrid(
-      List<ChatMessage> messages,
-      int maxTokens,
-      int recentMessagesToProtect,
-      ) {
+    List<ChatMessage> messages,
+    int maxTokens,
+    int recentMessagesToProtect,
+  ) {
     if (messages.length <= 2) {
       return _buildTokenBased(messages, maxTokens, recentMessagesToProtect);
     }
@@ -206,7 +216,8 @@ class ContextManager {
     }
 
     // Add ellipsis if we skipped messages
-    if (middleMessages.isNotEmpty && messages.indexOf(middleMessages.first) > 1) {
+    if (middleMessages.isNotEmpty &&
+        messages.indexOf(middleMessages.first) > 1) {
       final skipped = messages.indexOf(middleMessages.first) - 1;
       conversationHistory.write('[... $skipped messages omitted ...]\n\n');
     }
@@ -240,8 +251,10 @@ class ContextManager {
     }
 
     final totalTokens = firstTokens + middleTokens + recentTokens;
-    debugPrint('📊 Hybrid: $totalTokens tokens (first + $middleTokens middle + $recentTokens recent)');
-    debugPrint('📝 Messages: 1 first + ${middleMessages.length} middle + $recentCount recent');
+    debugPrint(
+        '📊 Hybrid: $totalTokens tokens (first + $middleTokens middle + $recentTokens recent)');
+    debugPrint(
+        '📝 Messages: 1 first + ${middleMessages.length} middle + $recentCount recent');
 
     return conversationHistory.toString();
   }
@@ -249,10 +262,10 @@ class ContextManager {
   /// Strategy 4: Smart (prioritize first, last N, and important messages)
   /// PROTECTED: Last N messages are ALWAYS included completely
   static String _buildSmart(
-      List<ChatMessage> messages,
-      int maxTokens,
-      int recentMessagesToProtect,
-      ) {
+    List<ChatMessage> messages,
+    int maxTokens,
+    int recentMessagesToProtect,
+  ) {
     if (messages.length <= 5) {
       return _buildTokenBased(messages, maxTokens, recentMessagesToProtect);
     }
@@ -327,8 +340,10 @@ class ContextManager {
     }
 
     final totalTokens = firstTokens + middleTokens + recentTokens;
-    debugPrint('📊 Smart Strategy: $totalTokens tokens (first + $middleTokens middle + $recentTokens recent)');
-    debugPrint('📝 Messages: 1 first + ${middleMessages.length} middle + $recentCount recent = ${selectedMessages.length} total');
+    debugPrint(
+        '📊 Smart Strategy: $totalTokens tokens (first + $middleTokens middle + $recentTokens recent)');
+    debugPrint(
+        '📝 Messages: 1 first + ${middleMessages.length} middle + $recentCount recent = ${selectedMessages.length} total');
 
     return conversationHistory.toString();
   }
@@ -345,10 +360,12 @@ class ContextManager {
     }
 
     debugPrint('Total tokens in all messages: $totalTokens');
-    debugPrint('Token budget usage: ${(totalTokens / maxTokens * 100).toStringAsFixed(1)}%');
+    debugPrint(
+        'Token budget usage: ${(totalTokens / maxTokens * 100).toStringAsFixed(1)}%');
 
     if (totalTokens > maxTokens) {
-      debugPrint('⚠️ WARNING: Total tokens exceed budget by ${totalTokens - maxTokens}');
+      debugPrint(
+          '⚠️ WARNING: Total tokens exceed budget by ${totalTokens - maxTokens}');
     }
 
     debugPrint('======================\n');

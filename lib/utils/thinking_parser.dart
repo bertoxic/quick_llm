@@ -44,7 +44,8 @@ class ThinkingParser {
     }
     // No thinking pattern found - preserve existing thinking state
     else if (currentMsg.isThinking ||
-        (currentMsg.thinkingText != null && currentMsg.thinkingText!.isNotEmpty)) {
+        (currentMsg.thinkingText != null &&
+            currentMsg.thinkingText!.isNotEmpty)) {
       thinkingText = accumulatedThinking;
       isThinking = currentMsg.isThinking;
       displayText = fullText;
@@ -62,10 +63,10 @@ class ThinkingParser {
 
   /// Parse "Thinking..." pattern
   static ParsedThinkingResult _parseThinkingPattern(
-      String fullText,
-      int startIndex,
-      int endIndex,
-      ) {
+    String fullText,
+    int startIndex,
+    int endIndex,
+  ) {
     if (endIndex != -1 && endIndex > startIndex) {
       // Complete thinking block found
       final thinkingContent = fullText
@@ -73,10 +74,9 @@ class ThinkingParser {
           .trim();
 
       final displayText = (fullText.substring(0, startIndex).trim() +
-          ' ' +
-          fullText.substring(endIndex + '...done thinking.'.length).trim())
+              ' ' +
+              fullText.substring(endIndex + '...done thinking.'.length).trim())
           .trim();
-
 
       return ParsedThinkingResult(
         displayText: displayText,
@@ -85,12 +85,10 @@ class ThinkingParser {
       );
     } else {
       // Thinking in progress
-      final thinkingContent = fullText
-          .substring(startIndex + 'Thinking...'.length)
-          .trim();
+      final thinkingContent =
+          fullText.substring(startIndex + 'Thinking...'.length).trim();
 
       final displayText = fullText.substring(0, startIndex).trim();
-
 
       return ParsedThinkingResult(
         displayText: displayText,
@@ -112,11 +110,12 @@ class ThinkingParser {
           .trim();
 
       final displayText = (fullText.substring(0, thinkOpenIndex).trim() +
-          ' ' +
-          fullText.substring(thinkCloseIndex + '</think>'.length).trim())
+              ' ' +
+              fullText.substring(thinkCloseIndex + '</think>'.length).trim())
           .trim();
 
-      debugPrint('✅ Complete <think> block extracted: ${thinkingContent.length} chars');
+      debugPrint(
+          '✅ Complete <think> block extracted: ${thinkingContent.length} chars');
 
       return ParsedThinkingResult(
         displayText: displayText,
@@ -125,9 +124,8 @@ class ThinkingParser {
       );
     } else {
       // Thinking in progress with <think> tags
-      final thinkingContent = fullText
-          .substring(thinkOpenIndex + '<think>'.length)
-          .trim();
+      final thinkingContent =
+          fullText.substring(thinkOpenIndex + '<think>'.length).trim();
 
       final displayText = fullText.substring(0, thinkOpenIndex).trim();
 

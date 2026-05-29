@@ -48,7 +48,7 @@ class _SplitChatViewState extends State<SplitChatView> {
       builder: (context, provider, child) {
         final messages = _getMessages();
         final conversation = widget.conversationIndex != null &&
-            widget.conversationIndex! < provider.conversations.length
+                widget.conversationIndex! < provider.conversations.length
             ? provider.conversations[widget.conversationIndex!]
             : null;
 
@@ -65,13 +65,17 @@ class _SplitChatViewState extends State<SplitChatView> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: widget.isDarkMode ? Colors.grey[850] : Colors.grey[100],
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+                  color:
+                      widget.isDarkMode ? Colors.grey[850] : Colors.grey[100],
+                  borderRadius:
+                      const BorderRadius.vertical(top: Radius.circular(8)),
                 ),
                 child: Row(
                   children: [
                     Icon(
-                      widget.isLeftPane ? Icons.view_sidebar : Icons.view_sidebar_outlined,
+                      widget.isLeftPane
+                          ? Icons.view_sidebar
+                          : Icons.view_sidebar_outlined,
                       size: 18,
                       color: Colors.grey[600],
                     ),
@@ -93,34 +97,34 @@ class _SplitChatViewState extends State<SplitChatView> {
               Expanded(
                 child: messages.isEmpty
                     ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.chat_bubble_outline,
-                        size: 48,
-                        color: Colors.grey[400],
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Select a conversation',
-                        style: TextStyle(color: Colors.grey[500]),
-                      ),
-                    ],
-                  ),
-                )
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.chat_bubble_outline,
+                              size: 48,
+                              color: Colors.grey[400],
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Select a conversation',
+                              style: TextStyle(color: Colors.grey[500]),
+                            ),
+                          ],
+                        ),
+                      )
                     : ListView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.all(16),
-                  itemCount: messages.length,
-                  itemBuilder: (context, index) {
-                    final message = messages[index];
-                    return MessageBubble(
-                      message: message,
-                      isDarkMode: widget.isDarkMode,
-                    );
-                  },
-                ),
+                        controller: _scrollController,
+                        padding: const EdgeInsets.all(16),
+                        itemCount: messages.length,
+                        itemBuilder: (context, index) {
+                          final message = messages[index];
+                          return MessageBubble(
+                            message: message,
+                            isDarkMode: widget.isDarkMode,
+                          );
+                        },
+                      ),
               ),
             ],
           ),
@@ -195,11 +199,15 @@ class _ResizableSplitViewState extends State<ResizableSplitView> {
                   width: 8,
                   color: _isDragging
                       ? Colors.blue.withOpacity(0.5)
-                      : (widget.isDarkMode ? Colors.grey[800] : Colors.grey[300]),
+                      : (widget.isDarkMode
+                          ? Colors.grey[800]
+                          : Colors.grey[300]),
                   child: Center(
                     child: Container(
                       width: 2,
-                      color: widget.isDarkMode ? Colors.grey[700] : Colors.grey[400],
+                      color: widget.isDarkMode
+                          ? Colors.grey[700]
+                          : Colors.grey[400],
                     ),
                   ),
                 ),

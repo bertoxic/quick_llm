@@ -6,6 +6,7 @@ class ChatMessage {
   final bool isThinking;
   final String? modelName;
   final List<String>? attachedFiles; // File paths for attached files
+  final Map<String, dynamic>? details;
 
   ChatMessage({
     required this.text,
@@ -15,6 +16,7 @@ class ChatMessage {
     this.isThinking = false,
     this.modelName,
     this.attachedFiles,
+    this.details,
   });
 
   // Convert to JSON for storage
@@ -27,6 +29,7 @@ class ChatMessage {
       'isThinking': isThinking,
       'modelName': modelName,
       'attachedFiles': attachedFiles,
+      'details': details,
     };
   }
 
@@ -42,6 +45,9 @@ class ChatMessage {
       attachedFiles: json['attachedFiles'] != null
           ? List<String>.from(json['attachedFiles'] as List)
           : null,
+      details: json['details'] != null
+          ? Map<String, dynamic>.from(json['details'] as Map)
+          : null,
     );
   }
 
@@ -54,6 +60,7 @@ class ChatMessage {
     bool? isThinking,
     String? modelName,
     List<String>? attachedFiles,
+    Map<String, dynamic>? details,
   }) {
     return ChatMessage(
       text: text ?? this.text,
@@ -63,14 +70,22 @@ class ChatMessage {
       isThinking: isThinking ?? this.isThinking,
       modelName: modelName ?? this.modelName,
       attachedFiles: attachedFiles ?? this.attachedFiles,
+      details: details ?? this.details,
     );
+  }
+
+  int get estimatedTokenCount {
+    final source =
+        [text, thinkingText ?? ''].where((part) => part.isNotEmpty).join(' ');
+    if (source.trim().isEmpty) return 0;
+    return (source.trim().split(RegExp(r'\s+')).length * 1.35).ceil();
   }
 
   // Check if message has image attachments
   bool get hasImages {
     if (attachedFiles == null) return false;
     return attachedFiles!.any((path) {
-      final ext = path.toLowerCase().substring(path.lastIndexOf('.'));
+      final ext = _extension(path);
       return ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'].contains(ext);
     });
   }
@@ -79,8 +94,30 @@ class ChatMessage {
   bool get hasDocuments {
     if (attachedFiles == null) return false;
     return attachedFiles!.any((path) {
-      final ext = path.toLowerCase().substring(path.lastIndexOf('.'));
-      return ['.pdf', '.txt', '.doc', '.docx', '.md'].contains(ext);
+      final ext = _extension(path);
+      return [
+        '.pdf',
+        '.txt',
+        '.doc',
+        '.docx',
+        '.md',
+        '.csv',
+        '.tsv',
+        '.json',
+        '.yaml',
+        '.yml',
+        '.xml',
+        '.html',
+        '.htm',
+        '.log',
+        '.rtf',
+      ].contains(ext);
     });
+  }
+
+  static String _extension(String path) {
+    final dotIndex = path.lastIndexOf('.');
+    if (dotIndex == -1 || dotIndex == path.length - 1) return '';
+    return path.substring(dotIndex).toLowerCase();
   }
 }

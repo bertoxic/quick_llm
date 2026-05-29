@@ -83,13 +83,13 @@ class _SettingsDialogState extends State<SettingsDialog> {
             end: Alignment.bottomRight,
             colors: widget.isDarkMode
                 ? [
-              const Color(0xFF1E1E1E),
-              const Color(0xFF252525),
-            ]
+                    const Color(0xFF1E1E1E),
+                    const Color(0xFF252525),
+                  ]
                 : [
-              Colors.white,
-              Colors.grey[50]!,
-            ],
+                    Colors.white,
+                    Colors.grey[50]!,
+                  ],
           ),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
@@ -147,13 +147,13 @@ class _SettingsDialogState extends State<SettingsDialog> {
           end: Alignment.bottomRight,
           colors: widget.isDarkMode
               ? [
-            Colors.grey[850]!.withOpacity(0.8),
-            Colors.grey[900]!.withOpacity(0.6),
-          ]
+                  Colors.grey[850]!.withOpacity(0.8),
+                  Colors.grey[900]!.withOpacity(0.6),
+                ]
               : [
-            Colors.grey[100]!,
-            Colors.grey[50]!,
-          ],
+                  Colors.grey[100]!,
+                  Colors.grey[50]!,
+                ],
         ),
         borderRadius: const BorderRadius.only(
           topLeft: Radius.circular(16),
@@ -274,7 +274,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
         _buildSectionHeader(
           icon: Icons.thermostat_rounded,
           title: 'Temperature',
-          tooltip: 'Higher values make output more random, lower values more focused',
+          tooltip:
+              'Higher values make output more random, lower values more focused',
           value: _temperature.toStringAsFixed(2),
           valueColor: Colors.red,
         ),
@@ -501,9 +502,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
             child: SliderTheme(
               data: SliderThemeData(
                 activeTrackColor: activeColor,
-                inactiveTrackColor: widget.isDarkMode
-                    ? Colors.grey[800]
-                    : Colors.grey[300],
+                inactiveTrackColor:
+                    widget.isDarkMode ? Colors.grey[800] : Colors.grey[300],
                 thumbColor: activeColor,
                 overlayColor: activeColor.withOpacity(0.2),
                 thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
@@ -514,7 +514,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
                 min: min,
                 max: max,
                 divisions: divisions,
-                label: value is int ? value.toString() : value.toStringAsFixed(2),
+                label:
+                    value is int ? value.toString() : value.toStringAsFixed(2),
                 onChanged: onChanged,
               ),
             ),
@@ -601,13 +602,13 @@ class _SettingsDialogState extends State<SettingsDialog> {
           end: Alignment.bottomRight,
           colors: widget.isDarkMode
               ? [
-            Colors.grey[850]!.withOpacity(0.8),
-            Colors.grey[900]!.withOpacity(0.6),
-          ]
+                  Colors.grey[850]!.withOpacity(0.8),
+                  Colors.grey[900]!.withOpacity(0.6),
+                ]
               : [
-            Colors.grey[100]!,
-            Colors.grey[50]!,
-          ],
+                  Colors.grey[100]!,
+                  Colors.grey[50]!,
+                ],
         ),
         borderRadius: const BorderRadius.only(
           bottomLeft: Radius.circular(16),
@@ -652,16 +653,16 @@ class _SettingsDialogState extends State<SettingsDialog> {
       decoration: BoxDecoration(
         gradient: isPrimary
             ? LinearGradient(
-          colors: widget.isDarkMode
-              ? [Colors.red[700]!, Colors.red[800]!]
-              : [Colors.red[600]!, Colors.red[700]!],
-        )
+                colors: widget.isDarkMode
+                    ? [Colors.red[700]!, Colors.red[800]!]
+                    : [Colors.red[600]!, Colors.red[700]!],
+              )
             : null,
         color: isPrimary
             ? null
             : (widget.isDarkMode
-            ? Colors.grey[850]!.withOpacity(0.5)
-            : Colors.grey[200]),
+                ? Colors.grey[850]!.withOpacity(0.5)
+                : Colors.grey[200]),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: isPrimary
@@ -671,13 +672,14 @@ class _SettingsDialogState extends State<SettingsDialog> {
         ),
         boxShadow: isPrimary
             ? [
-          BoxShadow(
-            color: (widget.isDarkMode ? Colors.red[900]! : Colors.red[300]!)
-                .withOpacity(0.3),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ]
+                BoxShadow(
+                  color:
+                      (widget.isDarkMode ? Colors.red[900]! : Colors.red[300]!)
+                          .withOpacity(0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ]
             : null,
       ),
       child: Material(

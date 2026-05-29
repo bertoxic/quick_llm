@@ -20,19 +20,19 @@ class Conversation {
 
   /// Converts the conversation to a JSON map for storage
   Map<String, dynamic> toJson() => {
-    'title': title,
-    'messages': messages.map((m) => m.toJson()).toList(),
-    'timestamp': timestamp.toIso8601String(),
-  };
+        'title': title,
+        'messages': messages.map((m) => m.toJson()).toList(),
+        'timestamp': timestamp.toIso8601String(),
+      };
 
   /// Creates a Conversation from a JSON map
   factory Conversation.fromJson(Map<String, dynamic> json) => Conversation(
-    title: json['title'] as String,
-    messages: (json['messages'] as List)
-        .map((m) => ChatMessage.fromJson(m as Map<String, dynamic>))
-        .toList(),
-    timestamp: DateTime.parse(json['timestamp'] as String),
-  );
+        title: json['title'] as String,
+        messages: (json['messages'] as List)
+            .map((m) => ChatMessage.fromJson(m as Map<String, dynamic>))
+            .toList(),
+        timestamp: DateTime.parse(json['timestamp'] as String),
+      );
 
   /// Creates a copy of this conversation with optional field replacements
   Conversation copyWith({
@@ -91,8 +91,7 @@ class Conversation {
       messages.where((m) => m.isUser).toList();
 
   /// Gets all AI messages in this conversation
-  List<ChatMessage> get aiMessages =>
-      messages.where((m) => !m.isUser).toList();
+  List<ChatMessage> get aiMessages => messages.where((m) => !m.isUser).toList();
 
   /// Returns the total character count of all messages
   int get totalCharacterCount =>
