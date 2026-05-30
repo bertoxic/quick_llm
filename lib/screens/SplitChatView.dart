@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import '../provider/ChatProvider.dart';
 import '../models/chat_message.dart';
 import '../widgets/message_bubble.dart';
-import '../widgets/typing_indicaator.dart';
 
 class SplitChatView extends StatefulWidget {
   final int? conversationIndex;

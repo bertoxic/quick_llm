@@ -11,8 +11,10 @@ import '../models/conversation.dart';
 import '../provider/ChatProvider.dart';
 import '../services/ollama_service.dart';
 import '../services/storage_service.dart';
+import '../theme/app_theme.dart';
 import '../utils/conversation_manager.dart';
 import '../utils/helpers.dart';
+import '../utils/local_tools.dart';
 import '../utils/thinking_parser.dart';
 import '../widgets/chat_header.dart';
 import '../widgets/message_bubble.dart';
@@ -48,6 +50,48 @@ class _ChatPaneRuntime {
     controller.dispose();
     scrollHelper.dispose();
     ollamaService.dispose();
+  }
+}
+
+class _PreviewChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color accent;
+
+  const _PreviewChip({
+    required this.icon,
+    required this.label,
+    required this.accent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      height: 26,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(color: accent.withOpacity(0.28)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: accent),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: TextStyle(
+              color: accent,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -264,6 +308,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
       ...pane.messages,
       ChatMessage(text: '', isUser: false, timestamp: DateTime.now()),
     ]);
+    var toolContext = const LocalToolContext([]);
     final requestDetails = _buildRequestDetails(
       pane: pane,
       provider: provider,
@@ -272,6 +317,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
       contextMessages: contextMessages,
       attachments: userMessage.attachedFiles ?? const [],
       fileTypes: fileTypes,
+      toolContext: toolContext,
     );
 
     final assistantMessage = ChatMessage(
@@ -282,6 +328,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
       details: {
         'status': 'generating',
         'request': requestDetails,
+        'tools': toolContext.toDetails(),
       },
     );
 
@@ -314,7 +361,9 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
         model: selectedModel,
         prompt: userMessage.text,
         messagesArray: messagesArray,
-        systemPrompt: provider.useSystemPrompt ? provider.systemPrompt : null,
+        systemPrompt: LocalToolService.applySystemInstructions(
+          provider.useSystemPrompt ? provider.systemPrompt : null,
+        ),
         temperature: provider.temperature,
         maxTokens: provider.maxTokens,
         numCtx: provider.numCtx,
@@ -323,6 +372,14 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
         audio: fileTypes.audio,
         videos: fileTypes.videos,
         otherFiles: fileTypes.otherFiles,
+        tools: LocalToolService.ollamaToolDefinitions(),
+        toolExecutor: (toolCalls) async {
+          final batch =
+              await LocalToolService.executeOllamaToolCalls(toolCalls);
+          toolContext = toolContext.merge(batch.context);
+          requestDetails['tools'] = toolContext.toDetails();
+          return batch.toolMessages;
+        },
         requestMetadata: requestDetails,
       )) {
         if (!mounted) break;
@@ -335,6 +392,17 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
           _updateStreamingAssistant(pane, provider);
         } else if (event.isDone) {
           finalOllamaPayload = event.raw;
+        } else if (event.isToolCall || event.isToolResult) {
+          _updateStreamingAssistant(
+            pane,
+            provider,
+            detailsOverride: {
+              'status': event.isToolCall ? 'tool_calling' : 'generating',
+              'request': requestDetails,
+              'tools': toolContext.toDetails(),
+              'ollama_tool': event.raw,
+            },
+          );
         } else if (event.isError) {
           pane.responseBuffer = event.delta;
           _updateStreamingAssistant(
@@ -343,6 +411,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
             detailsOverride: {
               'status': 'error',
               'request': requestDetails,
+              'tools': toolContext.toDetails(),
               'error': event.delta,
               if (event.raw != null) 'ollama': event.raw,
             },
@@ -588,20 +657,28 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
     _sendMessage(side, regenerate: true);
   }
 
-  void _editMessage(int index, _PaneSide side) {
+  void _editMessage(int index, _PaneSide side, String text) {
     final pane = _pane(side);
     if (index < 0 || index >= pane.messages.length || pane.isGenerating) return;
 
     final provider = context.read<ChatProvider>();
     final message = pane.messages[index];
+    if (!message.isUser) return;
+    final trimmedText = text.trim();
+    if (trimmedText.isEmpty) return;
+    final attachments = message.attachedFiles ?? const <String>[];
 
     setState(() {
-      pane.controller.text = message.text;
-      pane.messages = pane.messages.sublist(0, index);
+      pane.messages[index] = message.copyWith(
+        text: trimmedText,
+        details: _buildUserMessageDetails(trimmedText, attachments),
+      );
+      pane.messages = pane.messages.sublist(0, index + 1);
     });
 
     _syncLeftPaneToProviderIfNeeded(pane, provider);
     unawaited(_persistPane(pane, provider));
+    _sendMessage(side, regenerate: true, message: trimmedText);
   }
 
   void _stopGeneration(_PaneSide side) {
@@ -894,6 +971,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
       List<String>? videos,
       List<String>? otherFiles,
     }) fileTypes,
+    required LocalToolContext toolContext,
   }) {
     return {
       'pane': pane.side.name,
@@ -923,6 +1001,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
         'other': fileTypes.otherFiles?.length ?? 0,
         'files': _attachmentDetails(attachments),
       },
+      'tools': toolContext.toDetails(),
       'started_at': DateTime.now().toIso8601String(),
     };
   }
@@ -948,6 +1027,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
     return {
       'status': status,
       'request': requestDetails,
+      if (requestDetails['tools'] != null) 'tools': requestDetails['tools'],
       'response': {
         'characters': pane.responseBuffer.length,
         'thinking_characters': pane.thinkingBuffer.length,
@@ -1043,27 +1123,37 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
         }
 
         return Scaffold(
+          backgroundColor: Theme.of(context).scaffoldBackgroundColor,
           body: Row(
             children: [
-              if (provider.isSidebarVisible)
-                Sidebar(
-                  isDarkMode: widget.isDarkMode,
-                  conversations: provider.conversations,
-                  selectedConversationIndex: _leftPane.conversationIndex,
-                  generatingConversationIndex: null,
-                  generatingConversationIndices:
-                      _generatingConversationIndices(),
-                  onNewChat: () => _startNewConversation(side: _PaneSide.left),
-                  onLoadConversation: (index) =>
-                      _loadConversation(index, side: _PaneSide.left),
-                  onDeleteConversation: _deleteConversation,
-                  onExportConversation: _exportConversation,
-                  onExportAll: _exportAllConversations,
-                  onToggleTheme: widget.toggleTheme,
-                  onClearAllConversations: _clearAllConversations,
-                  onEnableSplitMode: _enableSplitMode,
-                  isSplitMode: _isSplitMode,
-                ),
+              Sidebar(
+                isDarkMode: widget.isDarkMode,
+                isPanelVisible: provider.isSidebarVisible,
+                conversations: provider.conversations,
+                selectedConversationIndex: _leftPane.conversationIndex,
+                generatingConversationIndex: null,
+                generatingConversationIndices: _generatingConversationIndices(),
+                onNewChat: () => _startNewConversation(side: _PaneSide.left),
+                onLoadConversation: (index) =>
+                    _loadConversation(index, side: _PaneSide.left),
+                onDeleteConversation: _deleteConversation,
+                onExportConversation: _exportConversation,
+                onExportAll: _exportAllConversations,
+                onToggleTheme: widget.toggleTheme,
+                onToggleSidebar: _toggleSidebar,
+                onClearAllConversations: _clearAllConversations,
+                onEnableSplitMode: _enableSplitMode,
+                isSplitMode: _isSplitMode,
+                selectedModel:
+                    _leftPane.selectedModel ?? provider.selectedModel,
+                availableModels: _availableModels,
+                onModelChanged: (model) => _setPaneModel(_PaneSide.left, model),
+                onSettingsTap: _showSettingsDialog,
+                onMiniModeTap: _toggleMiniMode,
+                onToggleAlwaysOnTop: _toggleAlwaysOnTop,
+                onRefreshModels: _fetchAvailableModels,
+                isAlwaysOnTop: _isAlwaysOnTop,
+              ),
               Expanded(
                 child: Stack(
                   children: [
@@ -1130,13 +1220,13 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
                 },
                 child: Container(
                   width: dividerWidth,
-                  color: Theme.of(context).colorScheme.outlineVariant,
+                  color: AppColors.line,
                   child: Center(
                     child: Container(
                       width: 2,
                       height: 48,
                       decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        color: AppColors.teal,
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -1156,16 +1246,19 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
 
   Widget _buildChatPane(_PaneSide side, {required bool showPaneHeader}) {
     final pane = _pane(side);
+    final imagePaths = _imagePreviewPaths(pane);
 
     return Column(
       children: [
         if (showPaneHeader) _buildPaneHeader(side),
+        if (imagePaths.isNotEmpty && !_isSplitMode)
+          _buildMediaPreviewStrip(imagePaths),
         Expanded(
           child: pane.messages.isEmpty
               ? const EmptyChatPlaceholder()
               : ListView.builder(
                   controller: pane.scrollController,
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.fromLTRB(14, 18, 14, 16),
                   itemCount: pane.messages.length + (pane.isGenerating ? 1 : 0),
                   itemBuilder: (context, index) {
                     if (pane.isGenerating && index == pane.messages.length) {
@@ -1181,7 +1274,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
                       useFullWidth: _isSplitMode,
                       isDarkMode: widget.isDarkMode,
                       onEdit: message.isUser
-                          ? () => _editMessage(index, side)
+                          ? (text) => _editMessage(index, side, text)
                           : null,
                       onRegenerate: !message.isUser &&
                               index == pane.messages.length - 1 &&
@@ -1208,10 +1301,128 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
     );
   }
 
+  List<String> _imagePreviewPaths(_ChatPaneRuntime pane) {
+    final paths = <String>[];
+
+    for (final file in pane.attachedFiles) {
+      final extension = FileAttachmentHelper.extensionForPath(file.path);
+      if (FileAttachmentHelper.supportedImageExtensions.contains(extension)) {
+        paths.add(file.path);
+      }
+    }
+
+    for (final message in pane.messages.reversed) {
+      final attachments = message.attachedFiles;
+      if (attachments == null) continue;
+
+      for (final path in attachments) {
+        final extension = FileAttachmentHelper.extensionForPath(path);
+        if (FileAttachmentHelper.supportedImageExtensions.contains(extension)) {
+          paths.add(path);
+        }
+      }
+
+      if (paths.length >= 4) break;
+    }
+
+    return paths.take(4).toList();
+  }
+
+  Widget _buildMediaPreviewStrip(List<String> imagePaths) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    return Container(
+      height: 198,
+      padding: const EdgeInsets.fromLTRB(14, 8, 14, 14),
+      decoration: BoxDecoration(
+        color: theme.scaffoldBackgroundColor,
+        border: Border(bottom: BorderSide(color: colorScheme.outlineVariant)),
+      ),
+      child: Column(
+        children: [
+          SizedBox(
+            height: 26,
+            child: Row(
+              children: [
+                _PreviewChip(
+                  icon: Icons.image_search_rounded,
+                  label: '${imagePaths.length} uploaded',
+                  accent: AppColors.orange,
+                ),
+                const SizedBox(width: 7),
+                const _PreviewChip(
+                  icon: Icons.open_in_full_rounded,
+                  label: '1024x1024px',
+                  accent: AppColors.teal,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    imagePaths.map(FileAttachmentHelper.getFileName).join(', '),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: colorScheme.onSurface,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const Icon(Icons.thumb_up_alt_outlined,
+                    size: 16, color: AppColors.muted),
+                const SizedBox(width: 14),
+                const Icon(Icons.thumb_down_alt_outlined,
+                    size: 16, color: AppColors.muted),
+                const SizedBox(width: 14),
+                const Icon(Icons.volume_up_outlined,
+                    size: 16, color: AppColors.muted),
+                const SizedBox(width: 14),
+                const Icon(Icons.refresh_rounded,
+                    size: 16, color: AppColors.muted),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
+          Expanded(
+            child: Row(
+              children: imagePaths
+                  .map(
+                    (path) => Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 7),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.file(
+                            File(path),
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Container(
+                                color: Colors.white,
+                                child: const Icon(
+                                  Icons.broken_image_outlined,
+                                  color: AppColors.orange,
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildPaneHeader(_PaneSide side) {
     final pane = _pane(side);
     final provider = context.read<ChatProvider>();
-    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final title = pane.conversationIndex != null &&
             pane.conversationIndex! < provider.conversations.length
         ? provider.conversations[pane.conversationIndex!].title
@@ -1221,7 +1432,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
       height: 58,
       padding: const EdgeInsets.symmetric(horizontal: 10),
       decoration: BoxDecoration(
-        color: colorScheme.surface,
+        color: theme.scaffoldBackgroundColor,
         border: Border(bottom: BorderSide(color: colorScheme.outlineVariant)),
       ),
       child: Row(
@@ -1237,7 +1448,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
                 ? Icons.looks_one_rounded
                 : Icons.looks_two_rounded,
             size: 20,
-            color: colorScheme.primary,
+            color: AppColors.orange,
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -1253,21 +1464,27 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
           const SizedBox(width: 8),
           SizedBox(
             width: 210,
-            child: DropdownButton<String>(
-              value: pane.selectedModel,
-              isExpanded: true,
-              underline: const SizedBox.shrink(),
-              items: _availableModels
-                  .map((model) => DropdownMenuItem(
-                        value: model,
-                        child: Text(model, overflow: TextOverflow.ellipsis),
-                      ))
-                  .toList(),
-              onChanged: pane.isGenerating
-                  ? null
-                  : (model) {
-                      if (model != null) _setPaneModel(side, model);
-                    },
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: pane.selectedModel,
+                isExpanded: true,
+                dropdownColor: colorScheme.surface,
+                style: TextStyle(
+                  color: colorScheme.onSurface,
+                  fontWeight: FontWeight.w700,
+                ),
+                items: _availableModels
+                    .map((model) => DropdownMenuItem(
+                          value: model,
+                          child: Text(model, overflow: TextOverflow.ellipsis),
+                        ))
+                    .toList(),
+                onChanged: pane.isGenerating
+                    ? null
+                    : (model) {
+                        if (model != null) _setPaneModel(side, model);
+                      },
+              ),
             ),
           ),
           const SizedBox(width: 8),
@@ -1346,7 +1563,6 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
   }
 
   Widget _buildEdgeDropTarget(_PaneSide side) {
-    final colorScheme = Theme.of(context).colorScheme;
     final isLeft = side == _PaneSide.left;
 
     return Positioned(
@@ -1367,13 +1583,13 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
               duration: const Duration(milliseconds: 120),
               child: Container(
                 decoration: BoxDecoration(
-                  color: colorScheme.primaryContainer.withOpacity(0.82),
+                  color: AppColors.orange.withOpacity(0.82),
                   border: Border(
                     left: isLeft
                         ? BorderSide.none
-                        : BorderSide(color: colorScheme.primary, width: 2),
+                        : const BorderSide(color: AppColors.orange, width: 2),
                     right: isLeft
-                        ? BorderSide(color: colorScheme.primary, width: 2)
+                        ? const BorderSide(color: AppColors.orange, width: 2)
                         : BorderSide.none,
                   ),
                 ),
@@ -1382,8 +1598,8 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
                     quarterTurns: isLeft ? 3 : 1,
                     child: Text(
                       isLeft ? 'Drop left' : 'Drop right',
-                      style: TextStyle(
-                        color: colorScheme.onPrimaryContainer,
+                      style: const TextStyle(
+                        color: Colors.white,
                         fontWeight: FontWeight.w700,
                       ),
                     ),

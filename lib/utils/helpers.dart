@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../models/chat_message.dart';
 import '../services/storage_service.dart';
+import '../theme/app_theme.dart';
 
 class FileAttachmentHelper {
   static const List<String> supportedImageExtensions = [
@@ -247,27 +248,52 @@ class EmptyChatPlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.chat_bubble_outline,
-            size: 56,
-            color: colorScheme.onSurfaceVariant.withOpacity(0.55),
-          ),
-          const SizedBox(height: 14),
-          Text(
-            'Start a conversation',
-            style: TextStyle(
-              fontSize: 18,
-              color: colorScheme.onSurfaceVariant.withOpacity(0.8),
+      child: Container(
+        width: 360,
+        padding: const EdgeInsets.all(22),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.line),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: AppColors.ink,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.auto_awesome_rounded,
+                color: Colors.white,
+                size: 24,
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 14),
+            const Text(
+              'Creative Chat',
+              style: TextStyle(
+                color: AppColors.charcoal,
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Start with a prompt, attach files, or pick an older conversation from the panel.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: AppColors.muted,
+                fontSize: 12,
+                height: 1.35,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -394,90 +420,252 @@ class ChatInputArea extends StatelessWidget {
 
     return Container(
       constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.34,
+        maxHeight: MediaQuery.of(context).size.height * 0.38,
       ),
       decoration: BoxDecoration(
-        color: colorScheme.surface,
+        color: theme.scaffoldBackgroundColor,
         border: Border(top: BorderSide(color: colorScheme.outlineVariant)),
       ),
       child: SingleChildScrollView(
         child: Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
+              _QuickActionRow(controller: controller),
+              const SizedBox(height: 9),
               if (attachedFiles.isNotEmpty)
                 _AttachmentPreviewStrip(
                   attachedFiles: attachedFiles,
                   onRemoveFile: onRemoveFile,
                 ),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  IconButton(
-                    icon: Icon(
-                      Icons.attach_file,
-                      color:
-                          attachedFiles.isNotEmpty ? colorScheme.primary : null,
+              Container(
+                decoration: BoxDecoration(
+                  color: colorScheme.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: colorScheme.outlineVariant),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Tooltip(
+                      message: 'Attach files',
+                      child: IconButton(
+                        icon: Icon(
+                          Icons.attach_file_rounded,
+                          color: attachedFiles.isNotEmpty
+                              ? AppColors.orange
+                              : AppColors.muted,
+                        ),
+                        onPressed: isGenerating ? null : onPickFiles,
+                      ),
                     ),
-                    onPressed: isGenerating ? null : onPickFiles,
-                    tooltip: 'Attach files',
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxHeight: 150),
-                      child: Focus(
-                        onKeyEvent: (node, event) {
-                          final isEnter =
-                              event.logicalKey == LogicalKeyboardKey.enter ||
-                                  event.logicalKey ==
-                                      LogicalKeyboardKey.numpadEnter;
-                          final shiftPressed =
-                              HardwareKeyboard.instance.isShiftPressed;
+                    Expanded(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 132),
+                        child: Focus(
+                          onKeyEvent: (node, event) {
+                            final isEnter =
+                                event.logicalKey == LogicalKeyboardKey.enter ||
+                                    event.logicalKey ==
+                                        LogicalKeyboardKey.numpadEnter;
+                            final shiftPressed =
+                                HardwareKeyboard.instance.isShiftPressed;
 
-                          if (event is KeyDownEvent &&
-                              isEnter &&
-                              !shiftPressed) {
-                            if (!isGenerating) onSendMessage();
-                            return KeyEventResult.handled;
-                          }
+                            if (event is KeyDownEvent &&
+                                isEnter &&
+                                !shiftPressed) {
+                              if (!isGenerating) onSendMessage();
+                              return KeyEventResult.handled;
+                            }
 
-                          return KeyEventResult.ignored;
-                        },
-                        child: TextField(
-                          controller: controller,
-                          decoration: InputDecoration(
-                            hintText: 'Message or attach files...',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
+                            return KeyEventResult.ignored;
+                          },
+                          child: TextField(
+                            controller: controller,
+                            style: TextStyle(color: colorScheme.onSurface),
+                            decoration: const InputDecoration(
+                              hintText: 'Ask anything...',
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                              filled: false,
+                              contentPadding:
+                                  EdgeInsets.symmetric(vertical: 14),
                             ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 12,
-                            ),
+                            maxLines: null,
+                            keyboardType: TextInputType.multiline,
+                            textInputAction: TextInputAction.send,
+                            onSubmitted: (_) =>
+                                isGenerating ? null : onSendMessage(),
+                            enabled: !isGenerating,
                           ),
-                          maxLines: null,
-                          keyboardType: TextInputType.multiline,
-                          textInputAction: TextInputAction.send,
-                          onSubmitted: (_) =>
-                              isGenerating ? null : onSendMessage(),
-                          enabled: !isGenerating,
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton.filled(
-                    icon: Icon(
-                        isGenerating ? Icons.stop_rounded : Icons.send_rounded),
-                    onPressed: isGenerating ? onStopGeneration : onSendMessage,
-                    tooltip: isGenerating ? 'Stop generation' : 'Send message',
-                  ),
-                ],
+                    Padding(
+                      padding: const EdgeInsets.only(right: 7, bottom: 7),
+                      child: Material(
+                        color: isGenerating ? AppColors.orange : AppColors.ink,
+                        borderRadius: BorderRadius.circular(10),
+                        child: InkWell(
+                          onTap:
+                              isGenerating ? onStopGeneration : onSendMessage,
+                          borderRadius: BorderRadius.circular(10),
+                          child: SizedBox(
+                            width: 36,
+                            height: 36,
+                            child: Icon(
+                              isGenerating
+                                  ? Icons.stop_rounded
+                                  : Icons.graphic_eq_rounded,
+                              color: Colors.white,
+                              size: 19,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickActionRow extends StatelessWidget {
+  final TextEditingController controller;
+
+  const _QuickActionRow({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          _QuickActionChip(
+            icon: Icons.tips_and_updates_outlined,
+            label: 'Brainstorm',
+            onTap: () => _insertPrompt('Brainstorm ideas for '),
+          ),
+          _QuickActionChip(
+            icon: Icons.public_rounded,
+            label: 'Web search',
+            onTap: () => _insertPrompt('Web search: '),
+          ),
+          _QuickActionChip(
+            icon: Icons.terminal_rounded,
+            label: 'Shell',
+            onTap: () => _insertPrompt('Use the shell command runner for: '),
+          ),
+          _QuickActionChip(
+            icon: Icons.folder_open_rounded,
+            label: 'Files',
+            onTap: () => _insertPrompt('Read or write local files for: '),
+          ),
+          _QuickActionChip(
+            icon: Icons.account_tree_rounded,
+            label: 'Planner',
+            onTap: () => _insertPrompt('Create a multi-step plan for: '),
+          ),
+          _QuickActionChip(
+            icon: Icons.sticky_note_2_outlined,
+            label: 'Notes',
+            onTap: () => _insertPrompt('Save a note: '),
+          ),
+          _QuickActionChip(
+            icon: Icons.article_outlined,
+            label: 'Scrape URL',
+            onTap: () => _insertPrompt('Read this URL: '),
+          ),
+          _QuickActionChip(
+            icon: Icons.manage_search_rounded,
+            label: 'RAG',
+            onTap: () => _insertPrompt('Search my local documents for: '),
+          ),
+          _QuickActionChip(
+            icon: Icons.code_rounded,
+            label: 'Run code',
+            onTap: () => _insertPrompt('Run code to analyze: '),
+          ),
+          const SizedBox(width: 22),
+          _QuickActionChip(
+            icon: Icons.casino_outlined,
+            label: 'Random hints',
+            onTap: () => _insertPrompt('Give me a useful hint about '),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _insertPrompt(String text) {
+    final selection = controller.selection;
+    final base = controller.text;
+    if (!selection.isValid) {
+      controller.text = '$base$text';
+      controller.selection =
+          TextSelection.collapsed(offset: controller.text.length);
+      return;
+    }
+
+    final updated = base.replaceRange(selection.start, selection.end, text);
+    controller.text = updated;
+    controller.selection =
+        TextSelection.collapsed(offset: selection.start + text.length);
+  }
+}
+
+class _QuickActionChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _QuickActionChip({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.only(right: 7),
+      child: Material(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(8),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            height: 30,
+            padding: const EdgeInsets.symmetric(horizontal: 9),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.line),
+            ),
+            child: Row(
+              children: [
+                Icon(icon, size: 14, color: AppColors.orange),
+                const SizedBox(width: 5),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: colorScheme.onSurface,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -496,61 +684,152 @@ class _AttachmentPreviewStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: attachedFiles.asMap().entries.map((entry) {
+            final index = entry.key;
+            final file = entry.value;
+            final extension = FileAttachmentHelper.extensionForPath(file.path);
+            final isImage = FileAttachmentHelper.supportedImageExtensions
+                .contains(extension);
+
+            return Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: isImage
+                  ? _ImageAttachmentTile(
+                      file: file,
+                      onRemove: () => onRemoveFile(index),
+                    )
+                  : _DocumentAttachmentTile(
+                      file: file,
+                      onRemove: () => onRemoveFile(index),
+                    ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+}
+
+class _ImageAttachmentTile extends StatelessWidget {
+  final File file;
+  final VoidCallback onRemove;
+
+  const _ImageAttachmentTile({
+    required this.file,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Stack(
+      children: [
+        Container(
+          width: 112,
+          height: 112,
+          decoration: BoxDecoration(
+            color: colorScheme.surface,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: colorScheme.outlineVariant),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.file(
+              file,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                return const Center(
+                  child: Icon(Icons.broken_image_outlined,
+                      color: AppColors.orange),
+                );
+              },
+            ),
+          ),
+        ),
+        Positioned(
+          top: 5,
+          right: 5,
+          child: _RemoveAttachmentButton(onTap: onRemove),
+        ),
+      ],
+    );
+  }
+}
+
+class _DocumentAttachmentTile extends StatelessWidget {
+  final File file;
+  final VoidCallback onRemove;
+
+  const _DocumentAttachmentTile({
+    required this.file,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final fileName = FileAttachmentHelper.getFileName(file.path);
     final colorScheme = Theme.of(context).colorScheme;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(8),
+      width: 210,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: attachedFiles.asMap().entries.map((entry) {
-          final index = entry.key;
-          final file = entry.value;
-          final fileName = FileAttachmentHelper.getFileName(file.path);
+      child: Row(
+        children: [
+          Icon(
+            FileAttachmentHelper.getFileIconData(file.path),
+            size: 18,
+            color: AppColors.teal,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              fileName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: colorScheme.onSurface,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: 6),
+          _RemoveAttachmentButton(onTap: onRemove),
+        ],
+      ),
+    );
+  }
+}
 
-          return Container(
-            constraints: const BoxConstraints(maxWidth: 220),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-            decoration: BoxDecoration(
-              color: colorScheme.surface,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: colorScheme.outlineVariant),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  FileAttachmentHelper.getFileIconData(file.path),
-                  size: 18,
-                  color: colorScheme.primary,
-                ),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: Text(
-                    fileName,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.labelMedium,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                InkWell(
-                  onTap: () => onRemoveFile(index),
-                  borderRadius: BorderRadius.circular(8),
-                  child: Icon(
-                    Icons.close,
-                    size: 16,
-                    color: colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
-            ),
-          );
-        }).toList(),
+class _RemoveAttachmentButton extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _RemoveAttachmentButton({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.ink.withOpacity(0.78),
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: const SizedBox(
+          width: 22,
+          height: 22,
+          child: Icon(Icons.close_rounded, color: Colors.white, size: 14),
+        ),
       ),
     );
   }

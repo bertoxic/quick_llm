@@ -5,6 +5,7 @@ import 'package:quick_llm/provider/SplitScreenManager_provider.dart';
 import 'package:quick_llm/screens/chatScreen.dart';
 import 'package:quick_llm/screens/connection_state_screen.dart';
 import 'package:quick_llm/services/ollama_service.dart';
+import 'package:quick_llm/theme/app_theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -81,7 +82,7 @@ class _MyAppState extends State<MyApp> {
 
   Future<void> _loadTheme() async {
     final prefs = await SharedPreferences.getInstance();
-    final isDark = prefs.getBool('darkMode') ?? true;
+    final isDark = prefs.getBool('darkMode') ?? false;
 
     if (mounted) {
       context.read<ChatProvider>().setDarkMode(isDark);
@@ -105,16 +106,17 @@ class _MyAppState extends State<MyApp> {
         return MaterialApp(
           title: 'Ollama Chat',
           debugShowCheckedModeBanner: false,
-          theme: ThemeData.light(useMaterial3: true),
-          darkTheme: ThemeData.dark(useMaterial3: true).copyWith(
-            scaffoldBackgroundColor: const Color(0xFF1A1A1A),
-            cardColor: const Color(0xFF2A2A2A),
-          ),
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
           themeMode: chatProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
           home: _isCheckingConnection
               ? const Scaffold(
                   body: Center(
-                    child: CircularProgressIndicator(),
+                    child: SizedBox(
+                      width: 34,
+                      height: 34,
+                      child: CircularProgressIndicator(strokeWidth: 3),
+                    ),
                   ),
                 )
               : _ollamaConnected

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
-/// Animated typing indicator that shows when AI is thinking
+import '../theme/app_theme.dart';
+
 class TypingIndicator extends StatefulWidget {
   final bool isDarkMode;
   final String? modelName;
@@ -17,20 +18,15 @@ class TypingIndicator extends StatefulWidget {
 
 class _TypingIndicatorState extends State<TypingIndicator>
     with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _animation;
+  late final AnimationController _controller;
 
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(
-      duration: const Duration(milliseconds: 1400),
+      duration: const Duration(milliseconds: 1200),
       vsync: this,
     )..repeat();
-    _animation = CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeInOut,
-    );
   }
 
   @override
@@ -42,116 +38,79 @@ class _TypingIndicatorState extends State<TypingIndicator>
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // AI Avatar
           Container(
-            width: 32,
-            height: 32,
+            width: 28,
+            height: 28,
             decoration: BoxDecoration(
-              color: widget.isDarkMode
-                  ? Colors.blue[700]!.withOpacity(0.3)
-                  : Colors.blue[100],
-              shape: BoxShape.circle,
-              border: Border.all(
-                color:
-                    widget.isDarkMode ? Colors.blue[600]! : Colors.blue[300]!,
-                width: 2,
-              ),
+              color: AppColors.ink,
+              borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(
-              Icons.smart_toy_rounded,
-              size: 18,
-              color: widget.isDarkMode ? Colors.blue[300] : Colors.blue[700],
+            child: const Icon(
+              Icons.auto_awesome_rounded,
+              color: Colors.white,
+              size: 16,
             ),
           ),
-          const SizedBox(width: 12),
-          // Typing bubble
-          Flexible(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: widget.isDarkMode
-                    ? Colors.grey[800]!.withOpacity(0.5)
-                    : Colors.grey[200],
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color:
-                      widget.isDarkMode ? Colors.grey[700]! : Colors.grey[300]!,
-                  width: 1,
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (widget.modelName != null) ...[
-                    Text(
-                      widget.modelName!,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: widget.isDarkMode
-                            ? Colors.grey[500]
-                            : Colors.grey[600],
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                  ],
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _buildDot(0),
-                      const SizedBox(width: 4),
-                      _buildDot(1),
-                      const SizedBox(width: 4),
-                      _buildDot(2),
-                      const SizedBox(width: 12),
-                      Text(
-                        'Thinking...',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: widget.isDarkMode
-                              ? Colors.grey[500]
-                              : Colors.grey[600],
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                    ],
+          const SizedBox(width: 10),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.line),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _PulseDot(controller: _controller, offset: 0),
+                const SizedBox(width: 4),
+                _PulseDot(controller: _controller, offset: 0.18),
+                const SizedBox(width: 4),
+                _PulseDot(controller: _controller, offset: 0.36),
+                const SizedBox(width: 10),
+                Text(
+                  widget.modelName == null
+                      ? 'Thinking...'
+                      : '${widget.modelName} is thinking...',
+                  style: const TextStyle(
+                    color: AppColors.muted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ],
       ),
     );
   }
+}
 
-  Widget _buildDot(int index) {
+class _PulseDot extends StatelessWidget {
+  final AnimationController controller;
+  final double offset;
+
+  const _PulseDot({required this.controller, required this.offset});
+
+  @override
+  Widget build(BuildContext context) {
     return AnimatedBuilder(
-      animation: _animation,
+      animation: controller,
       builder: (context, child) {
-        // Calculate delay for each dot
-        final delay = index * 0.2;
-        final value = (_animation.value + delay) % 1.0;
-
-        // Scale and opacity animation
-        final scale = 0.6 + (0.4 * (1 - (value - 0.5).abs() * 2));
-        final opacity = 0.3 + (0.7 * (1 - (value - 0.5).abs() * 2));
-
-        return Transform.scale(
-          scale: scale,
-          child: Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              color: (widget.isDarkMode ? Colors.blue[400] : Colors.blue[600])!
-                  .withOpacity(opacity),
-              shape: BoxShape.circle,
-            ),
+        final value = (controller.value + offset) % 1.0;
+        final opacity = 0.32 + (0.68 * (1 - (value - 0.5).abs() * 2));
+        final size = 5.5 + (2.5 * opacity);
+        return Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            color: AppColors.orange.withOpacity(opacity),
+            shape: BoxShape.circle,
           ),
         );
       },
@@ -159,7 +118,6 @@ class _TypingIndicatorState extends State<TypingIndicator>
   }
 }
 
-/// Animated "Generating..." indicator for conversations
 class GeneratingIndicator extends StatefulWidget {
   final bool isDarkMode;
 
@@ -174,43 +132,15 @@ class GeneratingIndicator extends StatefulWidget {
 
 class _GeneratingIndicatorState extends State<GeneratingIndicator>
     with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _opacityAnimation;
-  String _dots = '';
-  int _dotCount = 0;
+  late final AnimationController _controller;
 
   @override
   void initState() {
     super.initState();
-
-    // Pulsing animation
     _controller = AnimationController(
-      duration: const Duration(milliseconds: 1500),
+      duration: const Duration(milliseconds: 900),
       vsync: this,
-    )..repeat(reverse: true);
-
-    _opacityAnimation = Tween<double>(
-      begin: 0.5,
-      end: 1.0,
-    ).animate(CurvedAnimation(
-      parent: _controller,
-      curve: Curves.easeInOut,
-    ));
-
-    // Dots animation
-    _animateDots();
-  }
-
-  void _animateDots() {
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (mounted) {
-        setState(() {
-          _dotCount = (_dotCount + 1) % 4;
-          _dots = '.' * _dotCount;
-        });
-        _animateDots();
-      }
-    });
+    )..repeat();
   }
 
   @override
@@ -221,53 +151,42 @@ class _GeneratingIndicatorState extends State<GeneratingIndicator>
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _opacityAnimation,
-      builder: (context, child) {
-        return Container(
-          margin: const EdgeInsets.only(top: 6),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: Colors.green.withOpacity(0.15),
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(
-              color: Colors.green.withOpacity(_opacityAnimation.value * 0.5),
-              width: 1,
+    return Container(
+      margin: const EdgeInsets.only(top: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: AppColors.teal.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(color: AppColors.teal.withOpacity(0.32)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 10,
+            height: 10,
+            child: CircularProgressIndicator(
+              strokeWidth: 1.6,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                AppColors.teal.withOpacity(0.9),
+              ),
             ),
           ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Animated spinning circle
-              SizedBox(
-                width: 10,
-                height: 10,
-                child: CircularProgressIndicator(
-                  strokeWidth: 1.5,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    Colors.green.withOpacity(_opacityAnimation.value),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 6),
-              // Text with animated dots
-              Text(
-                'Generating$_dots',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.green.withOpacity(_opacityAnimation.value),
-                ),
-              ),
-            ],
+          const SizedBox(width: 6),
+          const Text(
+            'Generating',
+            style: TextStyle(
+              color: AppColors.teal,
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+            ),
           ),
-        );
-      },
+        ],
+      ),
     );
   }
 }
 
-// Helper class to store parsed results
 class ParsedThinkingResult {
   final String displayText;
   final String? thinkingText;

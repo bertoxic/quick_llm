@@ -36,6 +36,7 @@ class MessageStreamHandler {
   /// Cancel any active stream
   void cancelActiveStream() {
     debugPrint('🔴 Cancelling active stream');
+    _ollamaService.cancelGeneration();
     _activeStreamSubscription?.cancel();
     _activeStreamSubscription = null;
     _updateDebounceTimer?.cancel();

@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 
+import '../theme/app_theme.dart';
+
 class OllamaConnectionScreen extends StatefulWidget {
   final VoidCallback onConnectionSuccess;
 
@@ -74,9 +76,8 @@ class _OllamaConnectionScreenState extends State<OllamaConnectionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Scaffold(
+      backgroundColor: AppColors.porcelain,
       body: Center(
         child: Container(
           constraints: const BoxConstraints(maxWidth: 500),
@@ -84,37 +85,46 @@ class _OllamaConnectionScreenState extends State<OllamaConnectionScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Ollama Logo/Icon
-              Icon(
-                Icons.cloud_off_outlined,
-                size: 80,
-                color: isDark ? Colors.grey[600] : Colors.grey[400],
+              Container(
+                width: 78,
+                height: 78,
+                decoration: BoxDecoration(
+                  color: AppColors.ink,
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: const Icon(
+                  Icons.cloud_off_outlined,
+                  size: 42,
+                  color: Colors.white,
+                ),
               ),
               const SizedBox(height: 32),
-
-              // Title
               Text(
                 'Ollama Not Connected',
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.bold,
+                      color: AppColors.charcoal,
                     ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),
-
-              // Status Message
               Text(
                 _statusMessage,
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: Colors.grey[600],
-                    ),
+                style: Theme.of(context)
+                    .textTheme
+                    .bodyLarge
+                    ?.copyWith(color: AppColors.muted),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 32),
-
               if (!_isChecking) ...[
-                // Instructions Card
                 Card(
+                  color: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                    side: const BorderSide(color: AppColors.line),
+                  ),
                   child: Padding(
                     padding: const EdgeInsets.all(24),
                     child: Column(
@@ -181,7 +191,6 @@ class _OllamaConnectionScreenState extends State<OllamaConnectionScreen> {
                   ],
                 ),
               ] else ...[
-                // Loading Indicator
                 const CircularProgressIndicator(),
               ],
             ],
@@ -200,15 +209,15 @@ class _OllamaConnectionScreenState extends State<OllamaConnectionScreen> {
           width: 32,
           height: 32,
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.primaryContainer,
-            shape: BoxShape.circle,
+            color: AppColors.softOrange,
+            borderRadius: BorderRadius.circular(8),
           ),
           child: Center(
             child: Text(
               number,
               style: TextStyle(
                 fontWeight: FontWeight.bold,
-                color: Theme.of(context).colorScheme.onPrimaryContainer,
+                color: AppColors.orange,
               ),
             ),
           ),
@@ -227,7 +236,7 @@ class _OllamaConnectionScreenState extends State<OllamaConnectionScreen> {
                 description,
                 style: TextStyle(
                   fontSize: 13,
-                  color: Colors.grey[600],
+                  color: AppColors.muted,
                 ),
               ),
             ],

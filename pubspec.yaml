@@ -36,7 +36,7 @@ dependencies:
   window_manager: ^0.3.7
   path_provider:
   provider: ^6.1.1
-  file_picker: ^6.0.0
+  file_picker: ^8.1.2
   syncfusion_flutter_pdf: ^28.1.33
   docx_to_text: ^1.0.1
   markdown_widget: ^2.3.2+8

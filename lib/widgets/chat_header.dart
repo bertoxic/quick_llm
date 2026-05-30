@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:window_manager/window_manager.dart';
 
-/// Enhanced chat header with theme-based colors
+import '../theme/app_theme.dart';
+
 class ChatHeader extends StatefulWidget {
   final bool isDarkMode;
   final bool isSidebarVisible;
@@ -35,14 +37,15 @@ class ChatHeader extends StatefulWidget {
 
 class _ChatHeaderState extends State<ChatHeader>
     with SingleTickerProviderStateMixin {
-  late AnimationController _refreshController;
+  late final AnimationController _refreshController;
+  final TextEditingController _searchController = TextEditingController();
   bool _isRefreshing = false;
 
   @override
   void initState() {
     super.initState();
     _refreshController = AnimationController(
-      duration: const Duration(milliseconds: 1000),
+      duration: const Duration(milliseconds: 900),
       vsync: this,
     );
   }
@@ -50,24 +53,22 @@ class _ChatHeaderState extends State<ChatHeader>
   @override
   void dispose() {
     _refreshController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
   void _handleRefresh() {
-    if (!_isRefreshing) {
-      setState(() => _isRefreshing = true);
-      _refreshController.repeat();
-      widget.onRefreshModels();
+    if (_isRefreshing) return;
+    setState(() => _isRefreshing = true);
+    _refreshController.repeat();
+    widget.onRefreshModels();
 
-      // Stop animation after 1 second
-      Future.delayed(const Duration(milliseconds: 1000), () {
-        if (mounted) {
-          _refreshController.stop();
-          _refreshController.reset();
-          setState(() => _isRefreshing = false);
-        }
-      });
-    }
+    Future.delayed(const Duration(milliseconds: 900), () {
+      if (!mounted) return;
+      _refreshController.stop();
+      _refreshController.reset();
+      setState(() => _isRefreshing = false);
+    });
   }
 
   @override
@@ -77,247 +78,270 @@ class _ChatHeaderState extends State<ChatHeader>
 
     return Container(
       height: 64,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
       decoration: BoxDecoration(
-        color: colorScheme.surface,
-        border: Border(
-          bottom: BorderSide(
-            color: colorScheme.outlineVariant,
-            width: 1,
-          ),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: colorScheme.shadow.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: Row(
-          children: [
-            _buildSidebarToggle(),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _buildModelSelector(),
-            ),
-            const SizedBox(width: 8),
-            _buildActionButtons(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// Enhanced sidebar toggle with animation
-  Widget _buildSidebarToggle() {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: widget.isSidebarVisible
-              ? colorScheme.primary
-              : Colors.transparent,
-          width: 1.5,
-        ),
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(10),
-          onTap: widget.onToggleSidebar,
-          child: Padding(
-            padding: const EdgeInsets.all(10),
-            child: AnimatedRotation(
-              turns: widget.isSidebarVisible ? 0 : 0.5,
-              duration: const Duration(milliseconds: 300),
-              child: Icon(
-                Icons.menu_rounded,
-                size: 22,
-                color: widget.isSidebarVisible
-                    ? colorScheme.primary
-                    : colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Modern model selector with custom styling
-  Widget _buildModelSelector() {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    return Container(
-      constraints: const BoxConstraints(
-        maxWidth: 280,
-        minWidth: 100,
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: colorScheme.outline,
-          width: 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: colorScheme.shadow.withOpacity(0.05),
-            blurRadius: 4,
-            offset: const Offset(0, 1),
-          ),
-        ],
+        color: theme.scaffoldBackgroundColor,
+        border: Border(bottom: BorderSide(color: colorScheme.outlineVariant)),
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: colorScheme.primaryContainer,
-              shape: BoxShape.circle,
+          if (!widget.isSidebarVisible) ...[
+            _HeaderIconButton(
+              icon: Icons.menu_rounded,
+              tooltip: 'Sidebar',
+              onTap: widget.onToggleSidebar,
             ),
-            child: Icon(
-              Icons.psychology_rounded,
-              size: 18,
-              color: colorScheme.onPrimaryContainer,
+            const SizedBox(width: 10),
+          ],
+          Expanded(
+            child: DragToMoveArea(
+              child: SizedBox(
+                height: double.infinity,
+                child: Row(
+                  children: [
+                    _HeaderBrand(colorScheme: colorScheme),
+                    const Spacer(),
+                    _ModelStatusChip(model: widget.selectedModel),
+                  ],
+                ),
+              ),
             ),
           ),
           const SizedBox(width: 10),
-          Expanded(
-            child: DropdownButton<String>(
-              value: widget.selectedModel,
-              isExpanded: true,
-              isDense: true,
-              underline: const SizedBox(),
-              icon: Icon(
-                Icons.keyboard_arrow_down_rounded,
-                color: colorScheme.onSurfaceVariant,
-                size: 20,
-              ),
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: colorScheme.onSurface,
-              ),
-              dropdownColor: colorScheme.surfaceContainer,
-              borderRadius: BorderRadius.circular(12),
-              items: widget.availableModels.map((model) {
-                return DropdownMenuItem(
-                  value: model,
-                  child: Text(
-                    model,
-                    overflow: TextOverflow.ellipsis,
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 260, minWidth: 170),
+            child: SizedBox(
+              height: 36,
+              child: TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: 'Search',
+                  prefixIcon: const Icon(Icons.search_rounded, size: 18),
+                  suffixIcon: const Icon(Icons.filter_list_rounded, size: 17),
+                  contentPadding: EdgeInsets.zero,
+                  fillColor: colorScheme.surface,
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
                   ),
-                );
-              }).toList(),
-              onChanged: (value) {
-                if (value != null) {
-                  widget.onModelChanged(value);
-                }
-              },
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide:
+                        const BorderSide(color: AppColors.teal, width: 1),
+                  ),
+                ),
+                style: const TextStyle(fontSize: 12),
+              ),
             ),
+          ),
+          const SizedBox(width: 10),
+          _HeaderIconButton(
+            icon: Icons.view_sidebar_rounded,
+            tooltip: 'Always on top',
+            isSelected: widget.isAlwaysOnTop,
+            onTap: widget.onToggleAlwaysOnTop,
+          ),
+          _HeaderTextButton(
+            icon: Icons.picture_in_picture_alt_rounded,
+            label: 'Mini',
+            onTap: widget.onMiniModeTap,
+          ),
+          _HeaderIconButton(
+            icon: Icons.ios_share_rounded,
+            tooltip: 'Refresh models',
+            onTap: _handleRefresh,
+            animated: _isRefreshing ? _refreshController : null,
+          ),
+          _HeaderIconButton(
+            icon: Icons.more_horiz_rounded,
+            tooltip: 'Settings',
+            onTap: widget.onSettingsTap,
           ),
         ],
       ),
     );
   }
+}
 
-  /// Enhanced action buttons with modern styling
-  Widget _buildActionButtons() {
+class _HeaderBrand extends StatelessWidget {
+  final ColorScheme colorScheme;
+
+  const _HeaderBrand({required this.colorScheme});
+
+  @override
+  Widget build(BuildContext context) {
     return Row(
-      mainAxisSize: MainAxisSize.min,
       children: [
-        _buildActionButton(
-          icon: Icons.refresh_rounded,
-          tooltip: 'Refresh models',
-          onTap: _handleRefresh,
-          isActive: _isRefreshing,
-          useAnimation: true,
+        Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: AppColors.ink,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: const Icon(
+            Icons.auto_awesome_rounded,
+            size: 17,
+            color: Colors.white,
+          ),
         ),
-        const SizedBox(width: 4),
-        _buildActionButton(
-          icon: widget.isAlwaysOnTop
-              ? Icons.push_pin_rounded
-              : Icons.push_pin_outlined,
-          tooltip: 'Always on top',
-          onTap: widget.onToggleAlwaysOnTop,
-          isActive: widget.isAlwaysOnTop,
-          activeColor: Colors.amber,
-        ),
-        const SizedBox(width: 4),
-        _buildActionButton(
-          icon: Icons.picture_in_picture_alt_rounded,
-          tooltip: 'Mini mode',
-          onTap: widget.onMiniModeTap,
-        ),
-        const SizedBox(width: 4),
-        _buildActionButton(
-          icon: Icons.tune_rounded,
-          tooltip: 'Settings',
-          onTap: widget.onSettingsTap,
+        const SizedBox(width: 10),
+        Text(
+          'Creative Chat',
+          style: TextStyle(
+            color: colorScheme.onSurface,
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
+          ),
         ),
       ],
     );
   }
+}
 
-  /// Reusable action button with consistent styling
-  Widget _buildActionButton({
-    required IconData icon,
-    required String tooltip,
-    required VoidCallback onTap,
-    bool isActive = false,
-    bool useAnimation = false,
-    Color? activeColor,
-  }) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+class _ModelStatusChip extends StatelessWidget {
+  final String? model;
 
-    final color = isActive
-        ? (activeColor ?? colorScheme.primary)
-        : colorScheme.onSurfaceVariant;
+  const _ModelStatusChip({required this.model});
 
-    final backgroundColor = isActive
-        ? (activeColor != null
-            ? activeColor.withOpacity(0.15)
-            : colorScheme.primaryContainer)
-        : colorScheme.surfaceContainerHighest;
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final label = model?.trim().isNotEmpty == true ? model! : 'No model';
 
-    final borderColor =
-        isActive ? (activeColor ?? colorScheme.primary) : Colors.transparent;
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 210),
+      height: 34,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.memory_rounded, size: 15, color: colorScheme.secondary),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: colorScheme.onSurface,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeaderIconButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+  final bool isSelected;
+  final Animation<double>? animated;
+
+  const _HeaderIconButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+    this.isSelected = false,
+    this.animated,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final iconWidget = Icon(
+      icon,
+      size: 18,
+      color: isSelected ? colorScheme.onInverseSurface : colorScheme.onSurface,
+    );
 
     return Tooltip(
       message: tooltip,
-      waitDuration: const Duration(milliseconds: 500),
-      child: Container(
-        decoration: BoxDecoration(
-          color: backgroundColor,
+      excludeFromSemantics: true,
+      waitDuration: const Duration(milliseconds: 450),
+      child: Padding(
+        padding: const EdgeInsets.only(left: 5),
+        child: Material(
+          color: isSelected ? colorScheme.inverseSurface : colorScheme.surface,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: borderColor,
-            width: 1.5,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(10),
+            child: SizedBox(
+              width: 34,
+              height: 34,
+              child: Center(
+                child: animated == null
+                    ? iconWidget
+                    : RotationTransition(
+                        turns: animated!,
+                        child: iconWidget,
+                      ),
+              ),
+            ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _HeaderTextButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _HeaderTextButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Tooltip(
+      message: label,
+      excludeFromSemantics: true,
+      waitDuration: const Duration(milliseconds: 450),
+      child: Padding(
+        padding: const EdgeInsets.only(left: 5),
         child: Material(
-          color: Colors.transparent,
+          color: colorScheme.surface,
+          borderRadius: BorderRadius.circular(10),
           child: InkWell(
-            borderRadius: BorderRadius.circular(10),
             onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.all(8),
-              child: useAnimation && _isRefreshing
-                  ? RotationTransition(
-                      turns: _refreshController,
-                      child: Icon(icon, size: 20, color: color),
-                    )
-                  : Icon(icon, size: 20, color: color),
+            borderRadius: BorderRadius.circular(10),
+            child: SizedBox(
+              height: 34,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                child: Row(
+                  children: [
+                    Icon(icon, size: 17, color: colorScheme.onSurface),
+                    const SizedBox(width: 5),
+                    Text(
+                      label,
+                      style: TextStyle(
+                        color: colorScheme.onSurface,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ),

@@ -5,6 +5,8 @@ import '../models/chat_message.dart';
 import '../models/conversation.dart';
 import '../provider/ChatProvider.dart';
 import '../services/ollama_service.dart';
+import '../theme/app_theme.dart';
+import '../utils/local_tools.dart';
 import '../widgets/typing_indicaator.dart';
 import '../widgets/message_bubble.dart';
 import '../utils/message_stream_handler.dart';
@@ -86,11 +88,19 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
         '💾 Synced ${provider.messages.length} messages to conversation $index');
   }
 
-  Future<void> _sendMessage() async {
+  Future<void> _sendMessage({bool useExistingLastUser = false}) async {
     if (!mounted) return;
 
     final provider = context.read<ChatProvider>();
-    final text = _controller.text.trim();
+    final existingUserMessage = useExistingLastUser &&
+            provider.messages.isNotEmpty
+        ? provider.messages.lastWhere(
+            (message) => message.isUser,
+            orElse: () =>
+                ChatMessage(text: '', isUser: true, timestamp: DateTime.now()),
+          )
+        : null;
+    final text = (existingUserMessage?.text ?? _controller.text).trim();
 
     if (text.isEmpty || provider.isGenerating || provider.isSending) {
       debugPrint('⚠️ Mini mode: Message blocked');
@@ -102,14 +112,16 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
 
     debugPrint('📤 Mini mode: Sending message');
 
-    final userMessage = ChatMessage(
-      text: text,
-      isUser: true,
-      timestamp: DateTime.now(),
-    );
+    if (!useExistingLastUser) {
+      final userMessage = ChatMessage(
+        text: text,
+        isUser: true,
+        timestamp: DateTime.now(),
+      );
 
-    provider.addMessage(userMessage);
-    _controller.clear();
+      provider.addMessage(userMessage);
+      _controller.clear();
+    }
 
     // Create empty assistant message placeholder for streaming
     final assistantMessage = ChatMessage(
@@ -131,12 +143,14 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
     final generatingForConversationIndex = provider.selectedConversationIndex;
 
     try {
-      // Build conversation history for context
+      // Build conversation history for context without duplicating the edited
+      // or newly submitted user message.
       final conversationHistory = StringBuffer();
-      final messages = provider.messages;
+      final messages = provider.messages.length >= 2
+          ? provider.messages.sublist(0, provider.messages.length - 2)
+          : <ChatMessage>[];
 
-      for (int i = 0; i < messages.length; i++) {
-        final msg = messages[i];
+      for (final msg in messages) {
         conversationHistory.write(msg.isUser
             ? 'User: ${msg.text}\n\n'
             : 'Assistant: ${msg.text}\n\n');
@@ -149,9 +163,17 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
       final stream = _ollamaService.generateResponse(
         model: provider.selectedModel,
         prompt: fullPrompt,
-        systemPrompt: provider.useSystemPrompt ? provider.systemPrompt : null,
+        systemPrompt: LocalToolService.applySystemInstructions(
+          provider.useSystemPrompt ? provider.systemPrompt : null,
+        ),
         temperature: provider.temperature,
         maxTokens: provider.maxTokens,
+        tools: LocalToolService.ollamaToolDefinitions(),
+        toolExecutor: (toolCalls) async {
+          final batch =
+              await LocalToolService.executeOllamaToolCalls(toolCalls);
+          return batch.toolMessages;
+        },
       );
 
       await _messageStreamHandler.handleStream(
@@ -276,7 +298,8 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
               Navigator.pop(context);
               _showSnackBar('Chat cleared', Icons.delete_sweep);
             },
-            child: const Text('Clear', style: TextStyle(color: Colors.red)),
+            child:
+                const Text('Clear', style: TextStyle(color: AppColors.orange)),
           ),
         ],
       ),
@@ -301,17 +324,24 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
   }
 
   // Edit a message and resend
-  void _editMessage(int index) {
+  void _editMessage(int index, String text) {
     if (!mounted) return;
     final provider = context.read<ChatProvider>();
 
     if (index < 0 || index >= provider.messages.length) return;
 
     final message = provider.messages[index];
-    _controller.text = message.text;
+    if (!message.isUser) return;
+    final trimmedText = text.trim();
+    if (trimmedText.isEmpty) return;
 
-    provider.removeMessagesFromIndex(index);
+    if (provider.isGenerating || provider.isSending) return;
+
+    final updatedMessages = provider.messages.sublist(0, index + 1);
+    updatedMessages[index] = message.copyWith(text: trimmedText);
+    provider.setMessages(updatedMessages);
     _syncMessagesToConversation(provider);
+    unawaited(_sendMessage(useExistingLastUser: true));
   }
 
   void _showSnackBar(String message, IconData icon) {
@@ -333,14 +363,11 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
     );
   }
 
-  Color get _backgroundColor =>
-      widget.isDarkMode ? const Color(0xFF1E1E1E) : const Color(0xFFF5F5F5);
+  Color get _backgroundColor => AppColors.porcelain;
 
-  Color get _surfaceColor =>
-      widget.isDarkMode ? const Color(0xFF2A2A2A) : Colors.white;
+  Color get _surfaceColor => Colors.white;
 
-  Color get _accentColor =>
-      widget.isDarkMode ? Colors.blue[400]! : Colors.blue[600]!;
+  Color get _accentColor => AppColors.orange;
 
   @override
   Widget build(BuildContext context) {
@@ -372,14 +399,14 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
         color: _surfaceColor,
         border: Border(
           bottom: BorderSide(
-            color: widget.isDarkMode ? Colors.grey[800]! : Colors.grey[300]!,
+            color: AppColors.line,
           ),
         ),
       ),
       child: Row(
         children: [
           // Model selector
-          Icon(Icons.psychology, size: 18, color: Colors.grey[600]),
+          const Icon(Icons.psychology, size: 18, color: AppColors.muted),
           const SizedBox(width: 8),
           Expanded(
             child: DropdownButton<String>(
@@ -472,14 +499,14 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
               'Start chatting',
               style: TextStyle(
                 fontSize: 14,
-                color: Colors.grey[500],
+                color: AppColors.muted,
                 fontWeight: FontWeight.w500,
               ),
             ),
             const SizedBox(height: 4),
             Text(
               'Compact mode with full markdown support',
-              style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+              style: const TextStyle(fontSize: 11, color: AppColors.muted),
             ),
           ],
         ),
@@ -532,7 +559,7 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
                 width: 24,
                 height: 24,
                 decoration: BoxDecoration(
-                  color: message.isUser ? _accentColor : Colors.grey[700],
+                  color: message.isUser ? _accentColor : AppColors.ink,
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
@@ -549,14 +576,13 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
-                  color:
-                      widget.isDarkMode ? Colors.grey[300] : Colors.grey[800],
+                  color: AppColors.charcoal,
                 ),
               ),
               const SizedBox(width: 6),
               Text(
                 _formatTimestamp(message.timestamp),
-                style: TextStyle(fontSize: 9, color: Colors.grey[600]),
+                style: const TextStyle(fontSize: 9, color: AppColors.muted),
               ),
               if (!message.isUser &&
                   message.thinkingText != null &&
@@ -577,7 +603,7 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
             message: message,
             isDarkMode: widget.isDarkMode,
             useFullWidth: true, // Enable full-width mode for mini mode
-            onEdit: message.isUser ? () => _editMessage(index) : null,
+            onEdit: message.isUser ? (text) => _editMessage(index, text) : null,
             onRegenerate:
                 !message.isUser && isLastMessage && !provider.isGenerating
                     ? _regenerateLastResponse
@@ -605,7 +631,7 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
         color: _surfaceColor,
         border: Border(
           top: BorderSide(
-            color: widget.isDarkMode ? Colors.grey[800]! : Colors.grey[300]!,
+            color: AppColors.line,
           ),
         ),
         boxShadow: [
@@ -627,21 +653,18 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
                 focusNode: _inputFocusNode,
                 decoration: InputDecoration(
                   hintText: 'Type a message...',
-                  hintStyle: TextStyle(fontSize: 13, color: Colors.grey[500]),
+                  hintStyle:
+                      const TextStyle(fontSize: 13, color: AppColors.muted),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                     borderSide: BorderSide(
-                      color: widget.isDarkMode
-                          ? Colors.grey[700]!
-                          : Colors.grey[300]!,
+                      color: AppColors.line,
                     ),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                     borderSide: BorderSide(
-                      color: widget.isDarkMode
-                          ? Colors.grey[700]!
-                          : Colors.grey[300]!,
+                      color: AppColors.line,
                     ),
                   ),
                   focusedBorder: OutlineInputBorder(
@@ -666,7 +689,7 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
           const SizedBox(width: 6),
           Container(
             decoration: BoxDecoration(
-              color: provider.isGenerating ? Colors.red : _accentColor,
+              color: provider.isGenerating ? AppColors.orange : AppColors.ink,
               borderRadius: BorderRadius.circular(8),
             ),
             child: IconButton(

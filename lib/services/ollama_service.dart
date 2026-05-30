@@ -7,7 +7,14 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
-enum OllamaStreamEventType { content, thinking, done, error }
+enum OllamaStreamEventType {
+  content,
+  thinking,
+  toolCall,
+  toolResult,
+  done,
+  error,
+}
 
 class OllamaStreamEvent {
   final OllamaStreamEventType type;
@@ -26,6 +33,12 @@ class OllamaStreamEvent {
   const OllamaStreamEvent.thinking(String delta)
       : this._(type: OllamaStreamEventType.thinking, delta: delta);
 
+  const OllamaStreamEvent.toolCall(Map<String, dynamic> raw)
+      : this._(type: OllamaStreamEventType.toolCall, raw: raw);
+
+  const OllamaStreamEvent.toolResult(Map<String, dynamic> raw)
+      : this._(type: OllamaStreamEventType.toolResult, raw: raw);
+
   const OllamaStreamEvent.done(Map<String, dynamic> raw)
       : this._(type: OllamaStreamEventType.done, raw: raw);
 
@@ -34,9 +47,15 @@ class OllamaStreamEvent {
 
   bool get isContent => type == OllamaStreamEventType.content;
   bool get isThinking => type == OllamaStreamEventType.thinking;
+  bool get isToolCall => type == OllamaStreamEventType.toolCall;
+  bool get isToolResult => type == OllamaStreamEventType.toolResult;
   bool get isDone => type == OllamaStreamEventType.done;
   bool get isError => type == OllamaStreamEventType.error;
 }
+
+typedef OllamaToolExecutor = Future<List<Map<String, dynamic>>> Function(
+  List<Map<String, dynamic>> toolCalls,
+);
 
 class OllamaService {
   static const String _baseUrl = 'http://localhost:11434';
@@ -80,6 +99,9 @@ class OllamaService {
     List<String>? audio,
     List<String>? videos,
     List<String>? otherFiles,
+    List<Map<String, dynamic>>? tools,
+    OllamaToolExecutor? toolExecutor,
+    int maxToolIterations = 4,
     Duration? timeout,
     Map<String, dynamic>? requestMetadata,
   }) async* {
@@ -156,82 +178,135 @@ class OllamaService {
       }
 
       final shouldEnableThinking = enableThinking && supportsThinking(model);
-      final requestBody = <String, dynamic>{
-        'model': model,
-        'messages': messages,
-        'stream': true,
-        'options': {
-          'temperature': temperature,
-          'num_predict': maxTokens,
-          'num_ctx': numCtx,
-        },
+      final options = {
+        'temperature': temperature,
+        'num_predict': maxTokens,
+        'num_ctx': numCtx,
       };
+      final toolSchemas =
+          tools == null ? const <Map<String, dynamic>>[] : List.of(tools);
+      final toolIterations = <Map<String, dynamic>>[];
 
-      if (shouldEnableThinking) {
-        requestBody['think'] = true;
-      }
+      for (var iteration = 0;
+          iteration <= maxToolIterations &&
+              _isGenerating &&
+              generationId == _generationId;
+          iteration++) {
+        final requestBody = <String, dynamic>{
+          'model': model,
+          'messages': messages,
+          'stream': true,
+          'options': options,
+        };
 
-      debugPrint('Calling Ollama /api/chat');
-      debugPrint('Model: $model');
-      debugPrint('Messages: ${messages.length}');
-      debugPrint('Images: ${base64Images.length}');
-      debugPrint('Documents: ${documents?.length ?? 0}');
+        if (shouldEnableThinking) {
+          requestBody['think'] = true;
+        }
 
-      final request = http.Request('POST', url)
-        ..headers['Content-Type'] = 'application/json'
-        ..body = jsonEncode(requestBody);
+        if (toolSchemas.isNotEmpty) {
+          requestBody['tools'] = toolSchemas;
+        }
 
-      final streamedResponse = timeout != null
-          ? await client.send(request).timeout(timeout)
-          : await client.send(request);
+        debugPrint('Calling Ollama /api/chat');
+        debugPrint('Model: $model');
+        debugPrint('Messages: ${messages.length}');
+        debugPrint('Images: ${base64Images.length}');
+        debugPrint('Documents: ${documents?.length ?? 0}');
+        debugPrint('Tools: ${toolSchemas.length}');
+        debugPrint('Tool iteration: $iteration');
 
-      if (streamedResponse.statusCode != 200) {
-        final errorBody = await streamedResponse.stream.bytesToString();
-        yield OllamaStreamEvent.error(
-          'Ollama returned ${streamedResponse.statusCode}: $errorBody',
-          {'status_code': streamedResponse.statusCode, 'body': errorBody},
-        );
-        return;
-      }
+        final request = http.Request('POST', url)
+          ..headers['Content-Type'] = 'application/json'
+          ..body = jsonEncode(requestBody);
 
-      await for (final line in streamedResponse.stream
-          .transform(utf8.decoder)
-          .transform(const LineSplitter())) {
-        if (!_isGenerating || generationId != _generationId) break;
-        if (line.trim().isEmpty) continue;
+        final streamedResponse = timeout != null
+            ? await client.send(request).timeout(timeout)
+            : await client.send(request);
 
-        Map<String, dynamic> json;
-        try {
-          json = jsonDecode(line) as Map<String, dynamic>;
-        } catch (e) {
+        if (streamedResponse.statusCode != 200) {
+          final errorBody = await streamedResponse.stream.bytesToString();
           yield OllamaStreamEvent.error(
-              'Could not parse Ollama stream line: $e');
-          continue;
+            'Ollama returned ${streamedResponse.statusCode}: $errorBody',
+            {'status_code': streamedResponse.statusCode, 'body': errorBody},
+          );
+          return;
         }
 
-        final streamError = json['error'] as String?;
-        if (streamError != null && streamError.isNotEmpty) {
-          yield OllamaStreamEvent.error(streamError, json);
-          continue;
-        }
+        final turnThinking = StringBuffer();
+        final turnContent = StringBuffer();
+        final turnToolCalls = <Map<String, dynamic>>[];
+        Map<String, dynamic>? donePayload;
 
-        final message = json['message'];
-        if (message is Map<String, dynamic>) {
-          final thinking = message['thinking'] as String?;
-          final content = message['content'] as String?;
+        await for (final line in streamedResponse.stream
+            .transform(utf8.decoder)
+            .transform(const LineSplitter())) {
+          if (!_isGenerating || generationId != _generationId) break;
+          if (line.trim().isEmpty) continue;
 
-          if (thinking != null && thinking.isNotEmpty) {
-            yield OllamaStreamEvent.thinking(thinking);
+          Map<String, dynamic> json;
+          try {
+            json = jsonDecode(line) as Map<String, dynamic>;
+          } catch (e) {
+            yield OllamaStreamEvent.error(
+                'Could not parse Ollama stream line: $e');
+            continue;
           }
 
-          if (content != null && content.isNotEmpty) {
-            yield OllamaStreamEvent.content(content);
+          final streamError = json['error'] as String?;
+          if (streamError != null && streamError.isNotEmpty) {
+            yield OllamaStreamEvent.error(streamError, json);
+            continue;
+          }
+
+          final message = json['message'];
+          if (message is Map<String, dynamic>) {
+            final thinking = message['thinking'] as String?;
+            final content = message['content'] as String?;
+            final toolCalls = _extractToolCalls(message['tool_calls']);
+
+            if (thinking != null && thinking.isNotEmpty) {
+              turnThinking.write(thinking);
+              yield OllamaStreamEvent.thinking(thinking);
+            }
+
+            if (content != null && content.isNotEmpty) {
+              turnContent.write(content);
+              yield OllamaStreamEvent.content(content);
+            }
+
+            if (toolCalls.isNotEmpty) {
+              turnToolCalls.addAll(toolCalls);
+              yield OllamaStreamEvent.toolCall({
+                'iteration': iteration,
+                'tool_calls': toolCalls,
+              });
+            }
+          }
+
+          if (json['done'] == true) {
+            donePayload = json;
+            break;
           }
         }
 
-        if (json['done'] == true) {
+        if (!_isGenerating || generationId != _generationId) {
+          return;
+        }
+
+        if (turnThinking.isNotEmpty ||
+            turnContent.isNotEmpty ||
+            turnToolCalls.isNotEmpty) {
+          messages.add({
+            'role': 'assistant',
+            'content': turnContent.toString(),
+            if (turnThinking.isNotEmpty) 'thinking': turnThinking.toString(),
+            if (turnToolCalls.isNotEmpty) 'tool_calls': turnToolCalls,
+          });
+        }
+
+        if (turnToolCalls.isEmpty) {
           yield OllamaStreamEvent.done({
-            ...json,
+            ...?donePayload,
             '_request': {
               ...?requestMetadata,
               'message_count': messages.length,
@@ -244,11 +319,43 @@ class OllamaService {
               'audio_attached': audio?.length ?? 0,
               'videos_attached': videos?.length ?? 0,
               'other_files_attached': otherFiles?.length ?? 0,
-              'options': requestBody['options'],
+              'tool_schema_count': toolSchemas.length,
+              'tool_iterations': toolIterations,
+              'options': options,
             },
           });
           break;
         }
+
+        if (toolExecutor == null) {
+          yield OllamaStreamEvent.error(
+            'The model requested a tool, but no tool executor is connected.',
+            {'tool_calls': turnToolCalls},
+          );
+          return;
+        }
+
+        if (iteration >= maxToolIterations) {
+          yield OllamaStreamEvent.error(
+            'Tool loop stopped after $maxToolIterations iterations.',
+            {'tool_calls': turnToolCalls},
+          );
+          return;
+        }
+
+        final toolMessages = await toolExecutor(turnToolCalls);
+        for (final toolMessage in toolMessages) {
+          messages.add(toolMessage);
+        }
+        toolIterations.add({
+          'iteration': iteration,
+          'tool_calls': turnToolCalls,
+          'tool_results': toolMessages,
+        });
+        yield OllamaStreamEvent.toolResult({
+          'iteration': iteration,
+          'tool_results': toolMessages,
+        });
       }
     } on TimeoutException {
       yield const OllamaStreamEvent.error('Ollama request timed out.');
@@ -278,6 +385,9 @@ class OllamaService {
     bool enableThinking = true,
     List<String>? images,
     List<String>? documents,
+    List<Map<String, dynamic>>? tools,
+    OllamaToolExecutor? toolExecutor,
+    int maxToolIterations = 4,
     Duration? timeout,
   }) async* {
     var hasStartedThinking = false;
@@ -294,6 +404,9 @@ class OllamaService {
       enableThinking: enableThinking,
       images: images,
       documents: documents,
+      tools: tools,
+      toolExecutor: toolExecutor,
+      maxToolIterations: maxToolIterations,
       timeout: timeout,
     )) {
       if (event.isThinking) {
@@ -312,6 +425,65 @@ class OllamaService {
         yield event.delta;
       }
     }
+  }
+
+  List<Map<String, dynamic>> _extractToolCalls(dynamic rawToolCalls) {
+    if (rawToolCalls is! List) return const [];
+
+    final toolCalls = <Map<String, dynamic>>[];
+    for (final rawCall in rawToolCalls) {
+      if (rawCall is Map<String, dynamic>) {
+        toolCalls.add(_normalizeToolCall(rawCall, toolCalls.length));
+      } else if (rawCall is Map) {
+        toolCalls.add(
+          _normalizeToolCall(
+              Map<String, dynamic>.from(rawCall), toolCalls.length),
+        );
+      }
+    }
+    return toolCalls;
+  }
+
+  Map<String, dynamic> _normalizeToolCall(
+    Map<String, dynamic> raw,
+    int fallbackIndex,
+  ) {
+    final normalized = Map<String, dynamic>.from(raw);
+    final function = normalized['function'];
+    if (function is Map<String, dynamic>) {
+      normalized['function'] = _normalizeToolFunction(function, fallbackIndex);
+    } else if (function is Map) {
+      normalized['function'] = _normalizeToolFunction(
+        Map<String, dynamic>.from(function),
+        fallbackIndex,
+      );
+    }
+    normalized['type'] ??= 'function';
+    return normalized;
+  }
+
+  Map<String, dynamic> _normalizeToolFunction(
+    Map<String, dynamic> function,
+    int fallbackIndex,
+  ) {
+    final normalized = Map<String, dynamic>.from(function);
+    normalized['index'] ??= fallbackIndex;
+
+    final arguments = normalized['arguments'];
+    if (arguments is String && arguments.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(arguments);
+        if (decoded is Map<String, dynamic>) {
+          normalized['arguments'] = decoded;
+        } else if (decoded is Map) {
+          normalized['arguments'] = Map<String, dynamic>.from(decoded);
+        }
+      } catch (_) {
+        normalized['arguments'] = {'input': arguments};
+      }
+    }
+
+    return normalized;
   }
 
   Future<List<String>> _encodeImages(List<String>? imagePaths) async {

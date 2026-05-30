@@ -1,21 +1,20 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:markdown_widget/markdown_widget.dart';
-import 'package:flutter_highlight/themes/atom-one-dark.dart';
 import 'package:flutter_highlight/themes/atom-one-light.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:markdown_widget/markdown_widget.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'dart:io';
-import '../models/chat_message.dart';
-import '../utils/helpers.dart';
 
-// ============================================================================
-// Main Message Bubble Widget
-// ============================================================================
+import '../models/chat_message.dart';
+import '../theme/app_theme.dart';
+import '../utils/helpers.dart';
 
 class MessageBubble extends StatefulWidget {
   final ChatMessage message;
   final bool isDarkMode;
-  final VoidCallback? onEdit;
+  final ValueChanged<String>? onEdit;
   final VoidCallback? onRegenerate;
   final bool useFullWidth;
 
@@ -33,74 +32,213 @@ class MessageBubble extends StatefulWidget {
 }
 
 class _MessageBubbleState extends State<MessageBubble> {
+  late final TextEditingController _editController;
+  final FocusNode _editFocusNode = FocusNode();
   bool _showThinking = false;
   bool _showDetails = false;
+  bool _isEditing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _editController = TextEditingController(text: widget.message.text);
+  }
+
+  @override
+  void didUpdateWidget(covariant MessageBubble oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_isEditing && oldWidget.message.text != widget.message.text) {
+      _editController.text = widget.message.text;
+    }
+  }
+
+  @override
+  void dispose() {
+    _editController.dispose();
+    _editFocusNode.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    // Get theme colors
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final screenWidth = MediaQuery.of(context).size.width;
-
-    if (widget.useFullWidth) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: _buildBubbleDecoration(colorScheme),
-          child: _buildBubbleContent(),
-        ),
-      );
+    if (widget.message.isUser) {
+      return _buildUserMessage(context);
     }
+    return _buildAssistantMessage(context);
+  }
+
+  Widget _buildUserMessage(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    final maxWidth = width * 0.70;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: 11),
       child: Row(
-        mainAxisAlignment: widget.message.isUser
-            ? MainAxisAlignment.end
-            : MainAxisAlignment.center, // Center the assistant message
+        mainAxisAlignment: MainAxisAlignment.end,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // For user messages, wrap content dynamically with max constraint
-          // For assistant messages, use flexible width
-          widget.message.isUser
-              ? Flexible(
-                  child: Container(
-                    constraints: BoxConstraints(
-                      maxWidth: screenWidth * 0.4,
+          Flexible(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: maxWidth),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  if (widget.message.attachedFiles?.isNotEmpty ?? false)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: FileAttachmentsWidget(
+                        files: widget.message.attachedFiles!,
+                        isDarkMode: widget.isDarkMode,
+                        alignEnd: true,
+                      ),
                     ),
-                    padding: const EdgeInsets.all(12),
-                    decoration: _buildBubbleDecoration(colorScheme),
-                    child: _buildBubbleContent(),
+                  _buildUserTextBubble(context),
+                  const SizedBox(height: 5),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      MessageMetadataWidget(
+                        timestamp: widget.message.timestamp,
+                        isUser: true,
+                        isDarkMode: widget.isDarkMode,
+                      ),
+                      if (widget.onEdit != null && !_isEditing) ...[
+                        const SizedBox(width: 8),
+                        MessageActionButtons(
+                          text: widget.message.text,
+                          onEdit: _startEditing,
+                        ),
+                      ],
+                    ],
                   ),
-                )
-              : Flexible(
-                  child: Container(
-                    constraints: BoxConstraints(
-                      maxWidth: screenWidth * 0.9,
-                      minWidth: 100,
-                    ),
-                    padding: const EdgeInsets.all(12),
-                    decoration: _buildBubbleDecoration(colorScheme),
-                    child: _buildBubbleContent(),
-                  ),
-                ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Container(
+            width: 26,
+            height: 26,
+            decoration: BoxDecoration(
+              color: AppColors.ink,
+              borderRadius: BorderRadius.circular(13),
+              border: Border.all(color: Colors.white, width: 2),
+            ),
+            child:
+                const Icon(Icons.person_rounded, size: 15, color: Colors.white),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildBubbleContent() {
-    return Column(
+  Widget _buildUserTextBubble(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.orange,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: _isEditing
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextField(
+                  controller: _editController,
+                  focusNode: _editFocusNode,
+                  minLines: 1,
+                  maxLines: null,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    height: 1.45,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  cursorColor: Colors.white,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    filled: false,
+                    border: InputBorder.none,
+                    enabledBorder: InputBorder.none,
+                    focusedBorder: InputBorder.none,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    _InlineEditButton(
+                      label: 'Cancel',
+                      icon: Icons.close_rounded,
+                      onTap: _cancelEditing,
+                    ),
+                    const SizedBox(width: 8),
+                    _InlineEditButton(
+                      label: 'Save',
+                      icon: Icons.check_rounded,
+                      onTap: _saveEditing,
+                    ),
+                  ],
+                ),
+              ],
+            )
+          : MarkdownContentWidget(
+              text: widget.message.text,
+              isUser: true,
+              isDarkMode: widget.isDarkMode,
+            ),
+    );
+  }
+
+  void _startEditing() {
+    setState(() {
+      _isEditing = true;
+      _editController.text = widget.message.text;
+      _editController.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: _editController.text.length,
+      );
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _editFocusNode.requestFocus();
+    });
+  }
+
+  void _cancelEditing() {
+    setState(() {
+      _isEditing = false;
+      _editController.text = widget.message.text;
+    });
+  }
+
+  void _saveEditing() {
+    final nextText = _editController.text.trim();
+    if (nextText.isEmpty) return;
+
+    setState(() => _isEditing = false);
+    if (nextText != widget.message.text) {
+      widget.onEdit?.call(nextText);
+    }
+  }
+
+  Widget _buildAssistantMessage(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    final maxWidth = widget.useFullWidth ? width * 0.92 : width * 0.70;
+    final toolActivities = _ToolActivityData.fromMessage(widget.message);
+    final messageContent = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
       children: [
         if (widget.message.attachedFiles?.isNotEmpty ?? false)
-          FileAttachmentsWidget(
-            files: widget.message.attachedFiles!,
-            isDarkMode: widget.isDarkMode,
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: FileAttachmentsWidget(
+              files: widget.message.attachedFiles!,
+              isDarkMode: widget.isDarkMode,
+            ),
           ),
-        if (!widget.message.isUser && widget.message.thinkingText != null)
+        if (widget.message.thinkingText != null)
           ThinkingSectionWidget(
             thinkingText: widget.message.thinkingText!,
             isThinking: widget.message.isThinking,
@@ -111,52 +249,73 @@ class _MessageBubbleState extends State<MessageBubble> {
         if (widget.message.text.isNotEmpty)
           MarkdownContentWidget(
             text: widget.message.text,
-            isUser: widget.message.isUser,
+            isUser: false,
             isDarkMode: widget.isDarkMode,
           ),
-        const SizedBox(height: 4),
-        MessageMetadataWidget(
-          timestamp: widget.message.timestamp,
-          modelName: widget.message.modelName,
-          isUser: widget.message.isUser,
-          isDarkMode: widget.isDarkMode,
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            MessageMetadataWidget(
+              timestamp: widget.message.timestamp,
+              modelName: widget.message.modelName,
+              isUser: false,
+              isDarkMode: widget.isDarkMode,
+            ),
+            const Spacer(),
+            MessageActionButtons(
+              text: widget.message.text,
+              onRegenerate: widget.onRegenerate,
+            ),
+          ],
         ),
         MessageDetailsDisclosure(
           message: widget.message,
           isExpanded: _showDetails,
           onToggle: () => setState(() => _showDetails = !_showDetails),
         ),
-        if (!widget.message.isUser || widget.onEdit != null)
-          MessageActionButtons(
-            text: widget.message.text,
-            onEdit: widget.onEdit,
-            onRegenerate: widget.onRegenerate,
-          ),
       ],
     );
-  }
 
-  BoxDecoration _buildBubbleDecoration(ColorScheme colorScheme) {
-    if (widget.message.isUser) {
-      // User message - use primary color variants
-      return BoxDecoration(
-        color: colorScheme.primaryContainer,
-        borderRadius: BorderRadius.circular(8),
-      );
-    } else {
-      // AI message - use surface variants
-      return BoxDecoration(
-        color: colorScheme.surfaceContainerHighest.withOpacity(0.55),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: colorScheme.outlineVariant),
-      );
-    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: maxWidth),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              if (toolActivities.isEmpty) return messageContent;
+
+              final sidebar = _ToolActivitySidebar(
+                activities: toolActivities,
+                isDarkMode: widget.isDarkMode,
+              );
+
+              if (constraints.maxWidth >= 640) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(width: 236, child: sidebar),
+                    const SizedBox(width: 14),
+                    Expanded(child: messageContent),
+                  ],
+                );
+              }
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  sidebar,
+                  const SizedBox(height: 10),
+                  messageContent,
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
   }
 }
-
-// ============================================================================
-// Markdown Content Widget
-// ============================================================================
 
 class MarkdownContentWidget extends StatelessWidget {
   final String text;
@@ -173,7 +332,13 @@ class MarkdownContentWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final textColor = theme.colorScheme.onSurface;
+    final isDark = theme.brightness == Brightness.dark;
+    final textColor = isUser ? Colors.white : theme.colorScheme.onSurface;
+    final blockSurface =
+        isDark ? theme.colorScheme.surfaceContainerHigh : Colors.white;
+    final inlineCodeBackground =
+        isUser ? Colors.white24 : theme.colorScheme.surfaceContainerHighest;
+    final lineColor = theme.colorScheme.outlineVariant;
 
     return MarkdownWidget(
       data: text,
@@ -183,231 +348,235 @@ class MarkdownContentWidget extends StatelessWidget {
       config: MarkdownConfig(
         configs: [
           PConfig(
-            textStyle: TextStyle(
-              fontSize: 14,
-              height: 1.5,
-              color: textColor,
+            textStyle: TextStyle(fontSize: 13, height: 1.45, color: textColor),
+          ),
+          H1Config(style: _headingStyle(22, textColor)),
+          H2Config(style: _headingStyle(19, textColor)),
+          H3Config(style: _headingStyle(17, textColor)),
+          H4Config(style: _headingStyle(15, textColor)),
+          H5Config(style: _headingStyle(14, textColor)),
+          H6Config(style: _headingStyle(13, textColor)),
+          CodeConfig(
+            style: TextStyle(
+              fontSize: 12,
+              backgroundColor: inlineCodeBackground,
+              color: isUser ? Colors.white : AppColors.orange,
+              fontFamily: 'monospace',
+              fontWeight: FontWeight.w700,
             ),
           ),
-          ..._buildHeadingConfigs(textColor),
-          _buildCodeConfig(theme),
-          _buildPreConfig(context, theme),
-          _buildBlockquoteConfig(theme),
-          _buildLinkConfig(context, theme),
-          HrConfig(
-            height: 1,
-            color: theme.dividerColor,
+          PreConfig(
+            theme: atomOneLightTheme,
+            padding: const EdgeInsets.all(14),
+            margin: const EdgeInsets.symmetric(vertical: 8),
+            decoration: BoxDecoration(
+              color: blockSurface,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: lineColor),
+            ),
+            textStyle: const TextStyle(
+              fontSize: 12,
+              fontFamily: 'monospace',
+              height: 1.45,
+            ),
+            wrapper: (child, code, language) => CodeBlockWrapper(
+              child: child,
+              code: code,
+              language: language,
+              isDarkMode: isDarkMode,
+            ),
           ),
-          _buildImageConfig(theme),
+          BlockquoteConfig(
+            textColor: textColor.withOpacity(0.74),
+            sideColor: isUser ? Colors.white : AppColors.teal,
+            sideWith: 3,
+            padding: const EdgeInsets.fromLTRB(14, 2, 0, 2),
+            margin: const EdgeInsets.symmetric(vertical: 8),
+          ),
+          LinkConfig(
+            style: TextStyle(
+              color: isUser ? Colors.white : AppColors.orange,
+              decoration: TextDecoration.underline,
+              fontSize: 13,
+            ),
+            onTap: (url) => _handleLinkTap(url, context),
+          ),
+          HrConfig(height: 1, color: isUser ? Colors.white38 : lineColor),
+          ImgConfig(
+            builder: (url, attributes) => ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.network(
+                url,
+                errorBuilder: (context, error, stackTrace) => Container(
+                  height: 110,
+                  color: AppColors.softOrange,
+                  child: const Center(
+                    child: Icon(Icons.broken_image_outlined,
+                        color: AppColors.orange),
+                  ),
+                ),
+              ),
+            ),
+          ),
           ListConfig(
-            marker: (isOrdered, depth, index) =>
-                _buildListMarker(isOrdered, index, textColor),
+            marker: (isOrdered, depth, index) => Text(
+              isOrdered ? '${index + 1}. ' : '- ',
+              style: TextStyle(color: textColor, fontSize: 13),
+            ),
           ),
         ],
       ),
     );
   }
 
-  List<WidgetConfig> _buildHeadingConfigs(Color textColor) {
-    return [
-      H1Config(
-          style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: textColor,
-              height: 1.3)),
-      H2Config(
-          style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: textColor,
-              height: 1.3)),
-      H3Config(
-          style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: textColor,
-              height: 1.3)),
-      H4Config(
-          style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: textColor,
-              height: 1.3)),
-      H5Config(
-          style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              color: textColor,
-              height: 1.3)),
-      H6Config(
-          style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.bold,
-              color: textColor,
-              height: 1.3)),
-    ];
-  }
-
-  CodeConfig _buildCodeConfig(ThemeData theme) {
-    return CodeConfig(
-      style: TextStyle(
-        fontSize: 13,
-        backgroundColor: theme.colorScheme.surfaceContainerHighest,
-        color: theme.colorScheme.error,
-        fontFamily: 'monospace',
-        fontWeight: FontWeight.w600,
-      ),
-    );
-  }
-
-  PreConfig _buildPreConfig(BuildContext context, ThemeData theme) {
-    return PreConfig(
-      theme: isDarkMode ? atomOneDarkTheme : atomOneLightTheme,
-      padding: const EdgeInsets.all(12),
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: theme.dividerColor,
-          width: 1,
-        ),
-      ),
-      textStyle:
-          const TextStyle(fontSize: 13, fontFamily: 'monospace', height: 1.4),
-      wrapper: (child, code, language) => CodeBlockWrapper(
-        child: child,
-        code: code,
-        isDarkMode: isDarkMode,
-      ),
-    );
-  }
-
-  BlockquoteConfig _buildBlockquoteConfig(ThemeData theme) {
-    return BlockquoteConfig(
-      textColor: theme.colorScheme.onSurface.withOpacity(0.7),
-      sideColor: theme.colorScheme.primary,
-      sideWith: 4.0,
-      padding: const EdgeInsets.fromLTRB(16, 2, 0, 2),
-      margin: const EdgeInsets.fromLTRB(0, 8, 0, 8),
-    );
-  }
-
-  LinkConfig _buildLinkConfig(BuildContext context, ThemeData theme) {
-    return LinkConfig(
-      style: TextStyle(
-        color: theme.colorScheme.primary,
-        decoration: TextDecoration.underline,
-        fontSize: 14,
-      ),
-      onTap: (url) => _handleLinkTap(url, context),
+  TextStyle _headingStyle(double size, Color color) {
+    return TextStyle(
+      fontSize: size,
+      height: 1.25,
+      color: color,
+      fontWeight: FontWeight.w800,
     );
   }
 
   Future<void> _handleLinkTap(String url, BuildContext context) async {
     try {
-      String finalUrl = url.startsWith('http') ? url : 'https://$url';
-      final uri = Uri.parse(finalUrl);
-
+      final uri = Uri.parse(url.startsWith('http') ? url : 'https://$url');
       final launched =
           await launchUrl(uri, mode: LaunchMode.externalApplication);
-
       if (!launched && context.mounted) {
-        _showSnackBar(context, 'Could not open link: $url');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not open link: $url')),
+        );
       }
     } catch (e) {
       if (context.mounted) {
-        _showSnackBar(context, 'Error opening link: $e');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error opening link: $e')),
+        );
       }
     }
   }
-
-  void _showSnackBar(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Theme.of(context).colorScheme.error,
-      ),
-    );
-  }
-
-  ImgConfig _buildImageConfig(ThemeData theme) {
-    return ImgConfig(
-      builder: (url, attributes) => Container(
-        margin: const EdgeInsets.symmetric(vertical: 8),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: theme.dividerColor),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: Image.network(
-            url,
-            errorBuilder: (context, error, stackTrace) =>
-                _buildImageError(theme),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildImageError(ThemeData theme) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          Icon(Icons.broken_image, color: theme.colorScheme.error),
-          const SizedBox(height: 8),
-          Text(
-            'Failed to load image',
-            style: TextStyle(
-              color: theme.colorScheme.onSurface.withOpacity(0.6),
-              fontSize: 12,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildListMarker(bool isOrdered, int index, Color textColor) {
-    return Text(
-      isOrdered ? '${index + 1}. ' : '• ',
-      style: TextStyle(color: textColor, fontSize: 14),
-    );
-  }
 }
-
-// ============================================================================
-// Code Block Wrapper with Copy Button
-// ============================================================================
 
 class CodeBlockWrapper extends StatelessWidget {
   final Widget child;
   final String code;
+  final String? language;
   final bool isDarkMode;
 
   const CodeBlockWrapper({
     super.key,
     required this.child,
     required this.code,
+    required this.language,
     required this.isDarkMode,
   });
 
   @override
   Widget build(BuildContext context) {
+    final isSvg = _isSvgBlock(code, language);
+    final codeBlock = Stack(
+      children: [
+        child,
+        Positioned(
+          top: 8,
+          right: 8,
+          child: CopyCodeButton(code: code, isDarkMode: isDarkMode),
+        ),
+      ],
+    );
+
+    if (!isSvg) return codeBlock;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SvgSketchPreview(svg: code),
+        codeBlock,
+      ],
+    );
+  }
+
+  bool _isSvgBlock(String source, String? language) {
+    final lang = language?.trim().toLowerCase();
+    return lang == 'svg' || source.trimLeft().startsWith('<svg');
+  }
+}
+
+/// Renders an SVG string inline as a preview above its code block.
+/// Falls back to an error card if the SVG is malformed or empty.
+class SvgSketchPreview extends StatelessWidget {
+  final String svg;
+
+  const SvgSketchPreview({super.key, required this.svg});
+
+  @override
+  Widget build(BuildContext context) {
+    final trimmed = svg.trim();
+    if (trimmed.isEmpty) return const SizedBox.shrink();
+
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      child: Stack(
-        children: [
-          child,
-          Positioned(
-            top: 8,
-            right: 8,
-            child: CopyCodeButton(code: code, isDarkMode: isDarkMode),
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.line),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 400),
+        child: SvgPicture.string(
+          trimmed,
+          fit: BoxFit.contain,
+          placeholderBuilder: (context) => const Center(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
           ),
-        ],
+        ),
+      ),
+    );
+  }
+}
+
+class _InlineEditButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _InlineEditButton({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white.withOpacity(0.16),
+      borderRadius: BorderRadius.circular(7),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(7),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 14, color: Colors.white),
+              const SizedBox(width: 4),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -417,8 +586,11 @@ class CopyCodeButton extends StatefulWidget {
   final String code;
   final bool isDarkMode;
 
-  const CopyCodeButton(
-      {super.key, required this.code, required this.isDarkMode});
+  const CopyCodeButton({
+    super.key,
+    required this.code,
+    required this.isDarkMode,
+  });
 
   @override
   State<CopyCodeButton> createState() => _CopyCodeButtonState();
@@ -437,36 +609,33 @@ class _CopyCodeButtonState extends State<CopyCodeButton> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
     return Material(
-      color: Colors.transparent,
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(7),
       child: InkWell(
         onTap: _copyCode,
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(7),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
           decoration: BoxDecoration(
-            color: colorScheme.surfaceContainerHighest.withOpacity(0.9),
-            borderRadius: BorderRadius.circular(4),
-            border: Border.all(color: theme.dividerColor),
+            border: Border.all(color: AppColors.line),
+            borderRadius: BorderRadius.circular(7),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(
-                _copied ? Icons.check : Icons.copy,
-                size: 14,
-                color: _copied ? colorScheme.primary : colorScheme.onSurface,
+                _copied ? Icons.check_rounded : Icons.copy_rounded,
+                size: 13,
+                color: _copied ? AppColors.teal : AppColors.muted,
               ),
               const SizedBox(width: 4),
               Text(
-                _copied ? 'Copied!' : 'Copy',
+                _copied ? 'Copied' : 'Copy code',
                 style: TextStyle(
-                  fontSize: 11,
-                  color: _copied ? colorScheme.primary : colorScheme.onSurface,
-                  fontWeight: FontWeight.w500,
+                  fontSize: 10,
+                  color: _copied ? AppColors.teal : AppColors.muted,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ],
@@ -477,32 +646,28 @@ class _CopyCodeButtonState extends State<CopyCodeButton> {
   }
 }
 
-// ============================================================================
-// File Attachments Widget
-// ============================================================================
-
 class FileAttachmentsWidget extends StatelessWidget {
   final List<String> files;
   final bool isDarkMode;
+  final bool alignEnd;
 
   const FileAttachmentsWidget({
     super.key,
     required this.files,
     required this.isDarkMode,
+    this.alignEnd = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: files
-            .map((path) =>
-                FilePreviewWidget(filePath: path, isDarkMode: isDarkMode))
-            .toList(),
-      ),
+    return Wrap(
+      alignment: alignEnd ? WrapAlignment.end : WrapAlignment.start,
+      spacing: 8,
+      runSpacing: 8,
+      children: files
+          .map((path) =>
+              FilePreviewWidget(filePath: path, isDarkMode: isDarkMode))
+          .toList(),
     );
   }
 }
@@ -526,8 +691,528 @@ class FilePreviewWidget extends StatelessWidget {
 
     return isImage
         ? ImagePreviewWidget(filePath: filePath, fileName: fileName)
-        : DocumentPreviewWidget(
-            fileName: fileName, extension: extension, isDarkMode: isDarkMode);
+        : DocumentPreviewWidget(fileName: fileName, extension: extension);
+  }
+}
+
+class _ToolActivitySidebar extends StatelessWidget {
+  final List<_ToolActivityData> activities;
+  final bool isDarkMode;
+
+  const _ToolActivitySidebar({
+    required this.activities,
+    required this.isDarkMode,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (activities.isEmpty) return const SizedBox.shrink();
+
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final surface =
+        isDarkMode ? colorScheme.surfaceContainerHigh : Colors.white;
+    final activeAccent = activities.any((item) => item.id == 'web_search')
+        ? AppColors.teal
+        : AppColors.orange;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(width: 4, color: activeAccent),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10, 10, 10, 11),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.auto_awesome_mosaic_outlined,
+                          size: 16,
+                          color: activeAccent,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            'Tool activity',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: colorScheme.onSurface,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                        _ToolCountBadge(count: activities.length),
+                      ],
+                    ),
+                    const SizedBox(height: 9),
+                    ...activities.map(
+                      (activity) => _ToolActivityTile(activity: activity),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ToolCountBadge extends StatelessWidget {
+  final int count;
+
+  const _ToolCountBadge({required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: AppColors.softTeal,
+        borderRadius: BorderRadius.circular(7),
+      ),
+      child: Text(
+        '$count',
+        style: const TextStyle(
+          color: AppColors.charcoal,
+          fontSize: 10,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+}
+
+class _ToolActivityTile extends StatelessWidget {
+  final _ToolActivityData activity;
+
+  const _ToolActivityTile({required this.activity});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final accent = _accentFor(activity.id);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(9),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colorScheme.outlineVariant),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(_iconFor(activity.id), size: 16, color: accent),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      activity.title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: colorScheme.onSurface,
+                        fontSize: 11,
+                        height: 1.15,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Wrap(
+                      spacing: 5,
+                      runSpacing: 5,
+                      children: [
+                        _MiniToolBadge(
+                          label: _statusLabel(activity.status),
+                          color: _statusColor(activity.status),
+                        ),
+                        _MiniToolBadge(
+                          label: activity.uiSurface,
+                          color: AppColors.teal,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            activity.summary,
+            style: TextStyle(
+              color: colorScheme.onSurface.withValues(alpha: 0.74),
+              fontSize: 10,
+              height: 1.3,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (activity.output?.isNotEmpty == true) ...[
+            const SizedBox(height: 7),
+            _ToolOutputPill(
+              icon: Icons.done_rounded,
+              label: activity.output!,
+              color: AppColors.teal,
+            ),
+          ],
+          if (activity.error?.isNotEmpty == true) ...[
+            const SizedBox(height: 7),
+            _ToolOutputPill(
+              icon: Icons.error_outline_rounded,
+              label: activity.error!,
+              color: AppColors.orange,
+            ),
+          ],
+          if (activity.steps.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            ...activity.steps.take(3).map(
+                  (step) => Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Icon(
+                            activity.status == 'complete'
+                                ? Icons.check_circle_rounded
+                                : Icons.radio_button_checked_rounded,
+                            size: 10,
+                            color: accent,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            step,
+                            style: TextStyle(
+                              color:
+                                  colorScheme.onSurface.withValues(alpha: 0.68),
+                              fontSize: 10,
+                              height: 1.25,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+          ],
+          if (activity.sources.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            ...activity.sources.take(3).map(
+                  (source) => Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(
+                          Icons.link_rounded,
+                          size: 10,
+                          color: AppColors.teal,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            source.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: colorScheme.onSurface.withValues(
+                                alpha: 0.68,
+                              ),
+                              fontSize: 10,
+                              height: 1.25,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  static IconData _iconFor(String id) {
+    switch (id) {
+      case 'shell_command_runner':
+        return Icons.terminal_rounded;
+      case 'file_reader_writer':
+        return Icons.folder_open_rounded;
+      case 'multi_step_planner':
+        return Icons.account_tree_rounded;
+      case 'web_search':
+        return Icons.public_rounded;
+      case 'note_saver':
+        return Icons.sticky_note_2_outlined;
+      case 'web_scraper_reader':
+        return Icons.article_outlined;
+      case 'local_document_search':
+        return Icons.manage_search_rounded;
+      case 'code_executor':
+        return Icons.data_object_rounded;
+      case 'calculator':
+        return Icons.calculate_outlined;
+      case 'svg_sketch':
+        return Icons.polyline_outlined;
+      default:
+        return Icons.extension_rounded;
+    }
+  }
+
+  static Color _accentFor(String id) {
+    switch (id) {
+      case 'web_search':
+      case 'local_document_search':
+      case 'web_scraper_reader':
+        return AppColors.teal;
+      case 'calculator':
+      case 'code_executor':
+        return AppColors.orange;
+      default:
+        return AppColors.charcoal;
+    }
+  }
+
+  static Color _statusColor(String status) {
+    switch (status) {
+      case 'complete':
+        return AppColors.teal;
+      case 'failed':
+      case 'unavailable':
+        return AppColors.orange;
+      case 'ready':
+        return AppColors.orange;
+      default:
+        return AppColors.muted;
+    }
+  }
+
+  static String _statusLabel(String status) {
+    switch (status) {
+      case 'complete':
+        return 'Complete';
+      case 'failed':
+        return 'Failed';
+      case 'unavailable':
+        return 'Unavailable';
+      case 'ready':
+        return 'Ready';
+      default:
+        return 'Queued';
+    }
+  }
+}
+
+class _ToolOutputPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  const _ToolOutputPill({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(color: color.withValues(alpha: 0.20)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              label,
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: color,
+                fontSize: 10,
+                height: 1.25,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MiniToolBadge extends StatelessWidget {
+  final String label;
+  final Color color;
+
+  const _MiniToolBadge({
+    required this.label,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
+      ),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          color: color,
+          fontSize: 9,
+          height: 1,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+}
+
+class _ToolActivityData {
+  final String id;
+  final String title;
+  final String status;
+  final String summary;
+  final String uiSurface;
+  final List<String> steps;
+  final String? output;
+  final String? error;
+  final List<_ToolSourceData> sources;
+
+  const _ToolActivityData({
+    required this.id,
+    required this.title,
+    required this.status,
+    required this.summary,
+    required this.uiSurface,
+    required this.steps,
+    this.output,
+    this.error,
+    this.sources = const [],
+  });
+
+  static List<_ToolActivityData> fromMessage(ChatMessage message) {
+    final tools = _extractToolDetails(message.details);
+    if (tools == null) return const [];
+
+    final rawActivity = tools['activity'];
+    if (rawActivity is! List) return const [];
+
+    return rawActivity
+        .whereType<Map>()
+        .map((item) => _ToolActivityData.fromMap(item))
+        .where((item) => item.title.isNotEmpty)
+        .toList();
+  }
+
+  factory _ToolActivityData.fromMap(Map<dynamic, dynamic> map) {
+    final rawSteps = map['steps'];
+    return _ToolActivityData(
+      id: '${map['id'] ?? ''}',
+      title: '${map['title'] ?? ''}',
+      status: '${map['status'] ?? 'queued'}',
+      summary: '${map['summary'] ?? ''}',
+      uiSurface: '${map['ui_surface'] ?? 'Activity sidebar'}',
+      steps: rawSteps is List
+          ? rawSteps
+              .map((step) => '$step')
+              .where((step) => step.isNotEmpty)
+              .toList()
+          : const [],
+      output: map['output'] == null ? null : '${map['output']}',
+      error: map['error'] == null ? null : '${map['error']}',
+      sources: map['sources'] is List
+          ? (map['sources'] as List)
+              .whereType<Map>()
+              .map((source) => _ToolSourceData.fromMap(source))
+              .toList()
+          : const [],
+    );
+  }
+
+  static Map<String, dynamic>? _extractToolDetails(
+    Map<String, dynamic>? details,
+  ) {
+    if (details == null) return null;
+
+    final topLevelTools = details['tools'];
+    if (topLevelTools is Map) {
+      return Map<String, dynamic>.from(topLevelTools);
+    }
+
+    final request = details['request'];
+    if (request is Map) {
+      final requestTools = request['tools'];
+      if (requestTools is Map) {
+        return Map<String, dynamic>.from(requestTools);
+      }
+    }
+
+    return null;
+  }
+}
+
+class _ToolSourceData {
+  final String title;
+  final String url;
+
+  const _ToolSourceData({
+    required this.title,
+    required this.url,
+  });
+
+  factory _ToolSourceData.fromMap(Map<dynamic, dynamic> map) {
+    return _ToolSourceData(
+      title: '${map['title'] ?? map['url'] ?? 'Source'}',
+      url: '${map['url'] ?? ''}',
+    );
   }
 }
 
@@ -545,50 +1230,41 @@ class ImagePreviewWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     final file = File(filePath);
 
-    if (!file.existsSync()) {
-      return _buildErrorPreview(context);
-    }
-
     return GestureDetector(
-      onTap: () => _showFullImage(context),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: Image.file(
-          file,
-          width: 150,
-          height: 150,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) =>
-              _buildErrorPreview(context),
+      onTap: file.existsSync() ? () => _showFullImage(context) : null,
+      child: Container(
+        width: 138,
+        height: 138,
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.line),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: file.existsSync()
+              ? Image.file(
+                  file,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) =>
+                      _buildMissingPreview(),
+                )
+              : _buildMissingPreview(),
         ),
       ),
     );
   }
 
-  Widget _buildErrorPreview(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Container(
-      width: 150,
-      height: 150,
-      decoration: BoxDecoration(
-        color: colorScheme.errorContainer,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: colorScheme.error),
-      ),
+  Widget _buildMissingPreview() {
+    return const Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.error_outline, size: 40, color: colorScheme.error),
-          const SizedBox(height: 4),
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Text(
-              'File not found',
-              style:
-                  TextStyle(fontSize: 10, color: colorScheme.onErrorContainer),
-              textAlign: TextAlign.center,
-            ),
+          Icon(Icons.broken_image_outlined, color: AppColors.orange),
+          SizedBox(height: 6),
+          Text(
+            'File not found',
+            style: TextStyle(color: AppColors.muted, fontSize: 10),
           ),
         ],
       ),
@@ -599,7 +1275,11 @@ class ImagePreviewWidget extends StatelessWidget {
     showDialog(
       context: context,
       builder: (context) => Dialog(
-        child: InteractiveViewer(child: Image.file(File(filePath))),
+        backgroundColor: Colors.transparent,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: InteractiveViewer(child: Image.file(File(filePath))),
+        ),
       ),
     );
   }
@@ -608,42 +1288,41 @@ class ImagePreviewWidget extends StatelessWidget {
 class DocumentPreviewWidget extends StatelessWidget {
   final String fileName;
   final String extension;
-  final bool isDarkMode;
 
   const DocumentPreviewWidget({
     super.key,
     required this.fileName,
     required this.extension,
-    required this.isDarkMode,
   });
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
     return Container(
-      padding: const EdgeInsets.all(8),
+      constraints: const BoxConstraints(maxWidth: 210),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: theme.dividerColor),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.line),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(
             FileAttachmentHelper.getFileIconData(extension),
-            size: 20,
-            color: colorScheme.primary,
+            size: 17,
+            color: AppColors.teal,
           ),
-          const SizedBox(width: 8),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 150),
+          const SizedBox(width: 7),
+          Flexible(
             child: Text(
               fileName,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 12, color: colorScheme.onSurface),
+              style: const TextStyle(
+                fontSize: 11,
+                color: AppColors.charcoal,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ],
@@ -651,10 +1330,6 @@ class DocumentPreviewWidget extends StatelessWidget {
     );
   }
 }
-
-// ============================================================================
-// Thinking Section Widget
-// ============================================================================
 
 class ThinkingSectionWidget extends StatelessWidget {
   final String thinkingText;
@@ -674,73 +1349,68 @@ class ThinkingSectionWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+    final colorScheme = Theme.of(context).colorScheme;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(8),
+      margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainer,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: theme.dividerColor),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          GestureDetector(
+          InkWell(
             onTap: onToggle,
-            child: Row(
-              children: [
-                Icon(
-                  showThinking ? Icons.expand_less : Icons.expand_more,
-                  size: 16,
-                  color: colorScheme.onSurface.withOpacity(0.6),
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  isThinking ? 'Thinking...' : 'View thinking process',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: colorScheme.onSurface.withOpacity(0.6),
-                    fontStyle: FontStyle.italic,
+            borderRadius: BorderRadius.circular(8),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    showThinking
+                        ? Icons.keyboard_arrow_down_rounded
+                        : Icons.keyboard_arrow_right_rounded,
+                    size: 16,
+                    color: AppColors.muted,
                   ),
-                ),
-                if (isThinking)
-                  Padding(
-                    padding: const EdgeInsets.only(left: 8),
-                    child: SizedBox(
-                      width: 12,
-                      height: 12,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: colorScheme.primary,
-                      ),
+                  const SizedBox(width: 4),
+                  Text(
+                    isThinking ? 'Thinking...' : 'View thinking',
+                    style: const TextStyle(
+                      color: AppColors.muted,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
-              ],
-            ),
-          ),
-          if (showThinking) ...[
-            const SizedBox(height: 8),
-            SelectableText(
-              thinkingText,
-              style: TextStyle(
-                fontSize: 12,
-                color: colorScheme.onSurface.withOpacity(0.7),
-                fontStyle: FontStyle.italic,
+                  if (isThinking) ...[
+                    const SizedBox(width: 8),
+                    const SizedBox(
+                      width: 11,
+                      height: 11,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ],
+                ],
               ),
             ),
-          ],
+          ),
+          if (showThinking)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: MarkdownContentWidget(
+                text: thinkingText,
+                isUser: false,
+                isDarkMode: isDarkMode,
+              ),
+            ),
         ],
       ),
     );
   }
 }
-
-// ============================================================================
-// Message Details Disclosure
-// ============================================================================
 
 class MessageDetailsDisclosure extends StatelessWidget {
   final ChatMessage message;
@@ -756,15 +1426,12 @@ class MessageDetailsDisclosure extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
     return Container(
       margin: const EdgeInsets.only(top: 8),
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainer.withOpacity(0.55),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: colorScheme.outlineVariant),
+        border: Border.all(color: AppColors.line),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -781,23 +1448,23 @@ class MessageDetailsDisclosure extends StatelessWidget {
                     isExpanded
                         ? Icons.keyboard_arrow_down_rounded
                         : Icons.keyboard_arrow_right_rounded,
-                    size: 18,
-                    color: colorScheme.onSurfaceVariant,
+                    size: 17,
+                    color: AppColors.muted,
                   ),
                   const SizedBox(width: 4),
-                  Text(
+                  const Text(
                     'Details',
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                      fontWeight: FontWeight.w600,
+                    style: TextStyle(
+                      color: AppColors.muted,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                   const SizedBox(width: 8),
                   Text(
                     '${message.estimatedTokenCount} est. tokens',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                    ),
+                    style:
+                        const TextStyle(color: AppColors.muted, fontSize: 10),
                   ),
                 ],
               ),
@@ -842,7 +1509,7 @@ class _MessageDetailsPanel extends StatelessWidget {
         ...details.map((row) => _DetailLine(row: row)),
         if (message.attachedFiles?.isNotEmpty == true) ...[
           const SizedBox(height: 8),
-          _DetailSectionTitle(title: 'Attached files'),
+          const _DetailSectionTitle(title: 'Attached files'),
           ...message.attachedFiles!.map(
             (path) => _DetailLine(
               row: _DetailRow(
@@ -854,7 +1521,7 @@ class _MessageDetailsPanel extends StatelessWidget {
         ],
         if (customDetails != null && customDetails.isNotEmpty) ...[
           const SizedBox(height: 8),
-          _DetailSectionTitle(title: 'Ollama and request data'),
+          const _DetailSectionTitle(title: 'Ollama and request data'),
           ..._flattenDetails(customDetails).map((row) => _DetailLine(row: row)),
         ],
       ],
@@ -896,9 +1563,6 @@ class _DetailLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
     return Padding(
       padding: const EdgeInsets.only(top: 5),
       child: Row(
@@ -908,19 +1572,22 @@ class _DetailLine extends StatelessWidget {
             width: 150,
             child: Text(
               row.label,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w600,
-              ),
               overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.muted,
+                fontSize: 10,
+                fontWeight: FontWeight.w800,
+              ),
             ),
           ),
           const SizedBox(width: 8),
           Expanded(
             child: SelectableText(
               row.value,
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: colorScheme.onSurface.withOpacity(0.82),
+              style: const TextStyle(
+                color: AppColors.charcoal,
+                fontSize: 10,
+                height: 1.35,
               ),
             ),
           ),
@@ -937,24 +1604,16 @@ class _DetailSectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 2, bottom: 2),
-      child: Text(
-        title,
-        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              color: colorScheme.primary,
-              fontWeight: FontWeight.w700,
-            ),
+    return Text(
+      title,
+      style: const TextStyle(
+        color: AppColors.orange,
+        fontSize: 11,
+        fontWeight: FontWeight.w900,
       ),
     );
   }
 }
-
-// ============================================================================
-// Message Metadata Widget
-// ============================================================================
 
 class MessageMetadataWidget extends StatelessWidget {
   final DateTime timestamp;
@@ -972,25 +1631,20 @@ class MessageMetadataWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textColor = Theme.of(context).colorScheme.onSurface.withOpacity(0.6);
-
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           _formatTimestamp(timestamp),
-          style: TextStyle(
-            fontSize: 10,
-            color: textColor,
-          ),
+          style: const TextStyle(color: AppColors.muted, fontSize: 10),
         ),
         if (!isUser && modelName != null) ...[
           const SizedBox(width: 8),
           Flexible(
             child: Text(
-              '• $modelName',
-              style: TextStyle(fontSize: 10, color: textColor),
+              modelName!,
               overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: AppColors.muted, fontSize: 10),
             ),
           ),
         ],
@@ -1007,10 +1661,6 @@ class MessageMetadataWidget extends StatelessWidget {
   }
 }
 
-// ============================================================================
-// Message Action Buttons
-// ============================================================================
-
 class MessageActionButtons extends StatelessWidget {
   final String text;
   final VoidCallback? onEdit;
@@ -1025,30 +1675,27 @@ class MessageActionButtons extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _ActionButton(
+          icon: Icons.copy_rounded,
+          tooltip: 'Copy',
+          onPressed: () => _copyToClipboard(context),
+        ),
+        if (onEdit != null)
           _ActionButton(
-            icon: Icons.copy,
-            tooltip: 'Copy',
-            onPressed: () => _copyToClipboard(context),
+            icon: Icons.edit_outlined,
+            tooltip: 'Edit',
+            onPressed: onEdit!,
           ),
-          if (onEdit != null) ...[
-            const SizedBox(width: 8),
-            _ActionButton(
-                icon: Icons.edit, tooltip: 'Edit', onPressed: onEdit!),
-          ],
-          if (onRegenerate != null) ...[
-            const SizedBox(width: 8),
-            _ActionButton(
-                icon: Icons.refresh,
-                tooltip: 'Regenerate',
-                onPressed: onRegenerate!),
-          ],
-        ],
-      ),
+        if (onRegenerate != null)
+          _ActionButton(
+            icon: Icons.refresh_rounded,
+            tooltip: 'Regenerate',
+            onPressed: onRegenerate!,
+          ),
+      ],
     );
   }
 
@@ -1056,7 +1703,9 @@ class MessageActionButtons extends StatelessWidget {
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-          content: Text('Copied to clipboard'), duration: Duration(seconds: 1)),
+        content: Text('Copied to clipboard'),
+        duration: Duration(seconds: 1),
+      ),
     );
   }
 }
@@ -1074,12 +1723,16 @@ class _ActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IconButton(
-      icon: Icon(icon, size: 16),
-      onPressed: onPressed,
-      tooltip: tooltip,
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints(),
+    return Tooltip(
+      message: tooltip,
+      excludeFromSemantics: true,
+      waitDuration: const Duration(milliseconds: 450),
+      child: IconButton(
+        icon: Icon(icon, size: 16, color: AppColors.muted),
+        onPressed: onPressed,
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+      ),
     );
   }
 }
