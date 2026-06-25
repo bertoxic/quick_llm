@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../utils/local_tools.dart';
 
 class SettingsDialog extends StatefulWidget {
   final TextEditingController systemPromptController;
   final bool useSystemPrompt;
+  final bool enableToolCalling;
   final double temperature;
   final int maxTokens;
   final int numCtx;
   final bool isDarkMode;
   final Function(bool) onUseSystemPromptChanged;
+  final Function(bool) onEnableToolCallingChanged;
   final Function(double) onTemperatureChanged;
   final Function(int) onMaxTokensChanged;
   final Function(int) onNumCtxChanged;
@@ -19,11 +22,13 @@ class SettingsDialog extends StatefulWidget {
     super.key,
     required this.systemPromptController,
     required this.useSystemPrompt,
+    required this.enableToolCalling,
     required this.temperature,
     required this.maxTokens,
     required this.numCtx,
     required this.isDarkMode,
     required this.onUseSystemPromptChanged,
+    required this.onEnableToolCallingChanged,
     required this.onTemperatureChanged,
     required this.onMaxTokensChanged,
     required this.onNumCtxChanged,
@@ -36,6 +41,7 @@ class SettingsDialog extends StatefulWidget {
 
 class _SettingsDialogState extends State<SettingsDialog> {
   late bool _useSystemPrompt;
+  late bool _enableToolCalling;
   late double _temperature;
   late int _maxTokens;
   late int _numCtx;
@@ -44,6 +50,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
   void initState() {
     super.initState();
     _useSystemPrompt = widget.useSystemPrompt;
+    _enableToolCalling = widget.enableToolCalling;
     _temperature = widget.temperature;
     _maxTokens = widget.maxTokens;
     _numCtx = widget.numCtx;
@@ -51,6 +58,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.all(28),
@@ -58,12 +66,12 @@ class _SettingsDialogState extends State<SettingsDialog> {
         constraints: const BoxConstraints(maxWidth: 560, maxHeight: 760),
         child: Container(
           decoration: BoxDecoration(
-            color: AppColors.porcelain,
+            color: colorScheme.surface,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.line),
+            border: Border.all(color: colorScheme.outlineVariant),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.18),
+                color: Colors.black.withValues(alpha: 0.18),
                 blurRadius: 28,
                 offset: const Offset(0, 14),
               ),
@@ -80,6 +88,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       _buildSystemPrompt(),
+                      const SizedBox(height: 14),
+                      _buildToolCalling(),
                       const SizedBox(height: 14),
                       _SettingSlider(
                         icon: Icons.thermostat_rounded,
@@ -150,13 +160,14 @@ class _SettingsDialogState extends State<SettingsDialog> {
   }
 
   Widget _buildHeader() {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       height: 64,
       padding: const EdgeInsets.symmetric(horizontal: 18),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-        border: Border(bottom: BorderSide(color: AppColors.line)),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHigh,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+        border: Border(bottom: BorderSide(color: colorScheme.outlineVariant)),
       ),
       child: Row(
         children: [
@@ -171,11 +182,11 @@ class _SettingsDialogState extends State<SettingsDialog> {
                 const Icon(Icons.tune_rounded, color: Colors.white, size: 18),
           ),
           const SizedBox(width: 12),
-          const Expanded(
+          Expanded(
             child: Text(
               'Advanced Settings',
               style: TextStyle(
-                color: AppColors.charcoal,
+                color: colorScheme.onSurface,
                 fontSize: 18,
                 fontWeight: FontWeight.w900,
               ),
@@ -192,6 +203,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
   }
 
   Widget _buildSystemPrompt() {
+    final colorScheme = Theme.of(context).colorScheme;
     return _SettingsCard(
       icon: Icons.psychology_rounded,
       title: 'System Prompt',
@@ -202,14 +214,15 @@ class _SettingsDialogState extends State<SettingsDialog> {
         children: [
           Container(
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: colorScheme.surface,
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: AppColors.line),
+              border: Border.all(color: colorScheme.outlineVariant),
             ),
             child: TextField(
               controller: widget.systemPromptController,
               minLines: 3,
               maxLines: 5,
+              style: TextStyle(color: colorScheme.onSurface, fontSize: 13),
               decoration: const InputDecoration(
                 hintText: 'You are a helpful assistant...',
                 border: InputBorder.none,
@@ -228,14 +241,17 @@ class _SettingsDialogState extends State<SettingsDialog> {
               widget.onUseSystemPromptChanged(value);
             },
             contentPadding: EdgeInsets.zero,
-            activeColor: AppColors.orange,
+            activeThumbColor: AppColors.orange,
             title: const Text(
               'Use system prompt',
               style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
             ),
-            subtitle: const Text(
+            subtitle: Text(
               'Include this instruction with every request.',
-              style: TextStyle(color: AppColors.muted, fontSize: 12),
+              style: TextStyle(
+                color: colorScheme.onSurface.withValues(alpha: 0.62),
+                fontSize: 12,
+              ),
             ),
           ),
         ],
@@ -243,13 +259,68 @@ class _SettingsDialogState extends State<SettingsDialog> {
     );
   }
 
+  Widget _buildToolCalling() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final tools = LocalToolService.tierOneTools;
+    return _SettingsCard(
+      icon: Icons.extension_rounded,
+      title: 'Tool Calling',
+      value: _enableToolCalling ? '${tools.length} available' : 'Off',
+      accent: AppColors.teal,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SwitchListTile(
+            value: _enableToolCalling,
+            onChanged: (value) {
+              setState(() => _enableToolCalling = value);
+              widget.onEnableToolCallingChanged(value);
+            },
+            contentPadding: EdgeInsets.zero,
+            activeThumbColor: AppColors.teal,
+            title: const Text(
+              'Allow native tools',
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+            ),
+            subtitle: Text(
+              _enableToolCalling
+                  ? 'Router, planner, search, file, chart, document, simulation, and CI tools are registered.'
+                  : 'Models answer without native tool schemas or preflight routing.',
+              style: TextStyle(
+                color: colorScheme.onSurface.withValues(alpha: 0.62),
+                fontSize: 12,
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: tools
+                .map(
+                  (tool) => Tooltip(
+                    message: tool.summary,
+                    child: _ToolCatalogChip(
+                      label: tool.title,
+                      enabled: _enableToolCalling,
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildActions() {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(12)),
-        border: Border(top: BorderSide(color: AppColors.line)),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHigh,
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(12)),
+        border: Border(top: BorderSide(color: colorScheme.outlineVariant)),
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
@@ -286,6 +357,56 @@ class _SettingsDialogState extends State<SettingsDialog> {
   }
 }
 
+class _ToolCatalogChip extends StatelessWidget {
+  final String label;
+  final bool enabled;
+
+  const _ToolCatalogChip({
+    required this.label,
+    required this.enabled,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const color = AppColors.teal;
+    final effectiveColor = enabled ? color : AppColors.muted;
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 168),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: effectiveColor.withValues(alpha: enabled ? 0.10 : 0.06),
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(
+          color: effectiveColor.withValues(alpha: enabled ? 0.26 : 0.14),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            enabled ? Icons.check_circle_rounded : Icons.circle_outlined,
+            size: 12,
+            color: effectiveColor,
+          ),
+          const SizedBox(width: 5),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: effectiveColor,
+                fontSize: 10,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _SettingSlider extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -317,6 +438,7 @@ class _SettingSlider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return _SettingsCard(
       icon: icon,
       title: title,
@@ -327,15 +449,20 @@ class _SettingSlider extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text(minLabel,
-                  style: const TextStyle(color: AppColors.muted, fontSize: 11)),
+              Text(
+                minLabel,
+                style: TextStyle(
+                  color: colorScheme.onSurface.withValues(alpha: 0.62),
+                  fontSize: 11,
+                ),
+              ),
               Expanded(
                 child: SliderTheme(
                   data: SliderThemeData(
                     activeTrackColor: accent,
                     inactiveTrackColor: AppColors.line,
                     thumbColor: accent,
-                    overlayColor: accent.withOpacity(0.14),
+                    overlayColor: accent.withValues(alpha: 0.14),
                     trackHeight: 4,
                     thumbShape:
                         const RoundSliderThumbShape(enabledThumbRadius: 7),
@@ -350,13 +477,21 @@ class _SettingSlider extends StatelessWidget {
                   ),
                 ),
               ),
-              Text(maxLabel,
-                  style: const TextStyle(color: AppColors.muted, fontSize: 11)),
+              Text(
+                maxLabel,
+                style: TextStyle(
+                  color: colorScheme.onSurface.withValues(alpha: 0.62),
+                  fontSize: 11,
+                ),
+              ),
             ],
           ),
           Text(
             description,
-            style: const TextStyle(color: AppColors.muted, fontSize: 12),
+            style: TextStyle(
+              color: colorScheme.onSurface.withValues(alpha: 0.62),
+              fontSize: 12,
+            ),
           ),
         ],
       ),
@@ -381,12 +516,13 @@ class _SettingsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: colorScheme.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.line),
+        border: Border.all(color: colorScheme.outlineVariant),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -397,7 +533,7 @@ class _SettingsCard extends StatelessWidget {
                 width: 30,
                 height: 30,
                 decoration: BoxDecoration(
-                  color: accent.withOpacity(0.12),
+                  color: accent.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Icon(icon, color: accent, size: 17),
@@ -406,8 +542,8 @@ class _SettingsCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(
-                    color: AppColors.charcoal,
+                  style: TextStyle(
+                    color: colorScheme.onSurface,
                     fontSize: 14,
                     fontWeight: FontWeight.w900,
                   ),
@@ -416,9 +552,9 @@ class _SettingsCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
                 decoration: BoxDecoration(
-                  color: accent.withOpacity(0.1),
+                  color: accent.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(7),
-                  border: Border.all(color: accent.withOpacity(0.28)),
+                  border: Border.all(color: accent.withValues(alpha: 0.28)),
                 ),
                 child: Text(
                   value,

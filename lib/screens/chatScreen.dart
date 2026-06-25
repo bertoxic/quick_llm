@@ -32,6 +32,7 @@ class _ChatPaneRuntime {
   final _PaneSide side;
   final TextEditingController controller = TextEditingController();
   final ScrollController scrollController = ScrollController();
+  final Map<int, GlobalKey> messageKeys = {};
   late final ScrollControllerHelper scrollHelper;
   final OllamaService ollamaService = OllamaService();
   final List<File> attachedFiles = [];
@@ -50,6 +51,7 @@ class _ChatPaneRuntime {
     controller.dispose();
     scrollHelper.dispose();
     ollamaService.dispose();
+    messageKeys.clear();
   }
 }
 
@@ -123,6 +125,9 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
   bool _copyFileAttachments = true;
   double _splitRatio = 0.5;
   List<String> _availableModels = [];
+  String _chatSearchQuery = '';
+  List<int> _chatSearchMatches = [];
+  int _chatSearchCursor = 0;
   Timer? _statsTimer;
 
   @override
@@ -186,6 +191,85 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
     return side == _PaneSide.left ? _PaneSide.right : _PaneSide.left;
   }
 
+  void _setChatSearchQuery(String query) {
+    setState(() {
+      _chatSearchQuery = query;
+      _refreshChatSearchMatches(updateState: false);
+      _chatSearchCursor = 0;
+    });
+    _scrollToActiveSearchMatch();
+  }
+
+  void _clearChatSearch() {
+    setState(() {
+      _chatSearchQuery = '';
+      _chatSearchMatches = [];
+      _chatSearchCursor = 0;
+    });
+  }
+
+  void _goToNextSearchMatch() {
+    if (_chatSearchMatches.isEmpty) return;
+    setState(() {
+      _chatSearchCursor = (_chatSearchCursor + 1) % _chatSearchMatches.length;
+    });
+    _scrollToActiveSearchMatch();
+  }
+
+  void _goToPreviousSearchMatch() {
+    if (_chatSearchMatches.isEmpty) return;
+    setState(() {
+      _chatSearchCursor = (_chatSearchCursor - 1 + _chatSearchMatches.length) %
+          _chatSearchMatches.length;
+    });
+    _scrollToActiveSearchMatch();
+  }
+
+  void _refreshChatSearchMatches({bool updateState = true}) {
+    final query = _chatSearchQuery.trim().toLowerCase();
+    final matches = <int>[];
+    if (query.isNotEmpty) {
+      for (var i = 0; i < _leftPane.messages.length; i++) {
+        final message = _leftPane.messages[i];
+        final haystack = [
+          message.text,
+          message.thinkingText ?? '',
+          message.modelName ?? '',
+        ].join('\n').toLowerCase();
+        if (haystack.contains(query)) matches.add(i);
+      }
+    }
+
+    void apply() {
+      _chatSearchMatches = matches;
+      if (_chatSearchCursor >= _chatSearchMatches.length) {
+        _chatSearchCursor = 0;
+      }
+    }
+
+    if (updateState && mounted) {
+      setState(apply);
+    } else {
+      apply();
+    }
+  }
+
+  void _scrollToActiveSearchMatch() {
+    if (_chatSearchMatches.isEmpty) return;
+    final messageIndex = _chatSearchMatches[_chatSearchCursor];
+    final key = _leftPane.messageKeys[messageIndex];
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final context = key?.currentContext;
+      if (context == null) return;
+      Scrollable.ensureVisible(
+        context,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+        alignment: 0.24,
+      );
+    });
+  }
+
   Future<void> _loadConversations() async {
     final conversations = await _conversationManager.load();
     if (mounted) {
@@ -205,6 +289,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
       maxTokens: prefs['maxTokens'] ?? 2048,
       numCtx: prefs['numCtx'] ?? 32768,
       useSystemPrompt: prefs['useSystemPrompt'] ?? false,
+      enableToolCalling: prefs['enableToolCalling'] ?? true,
     );
 
     _systemPromptController.text = provider.systemPrompt;
@@ -224,6 +309,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
       'maxTokens': provider.maxTokens,
       'numCtx': provider.numCtx,
       'useSystemPrompt': provider.useSystemPrompt,
+      'enableToolCalling': provider.enableToolCalling,
       'monitorClipboard': false,
       'copyFileAttachments': _copyFileAttachments,
     });
@@ -266,56 +352,72 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
     final pane = _pane(side);
     final provider = context.read<ChatProvider>();
     final selectedModel = pane.selectedModel ?? provider.selectedModel;
-    final messageText = (message ?? pane.controller.text).trim();
+    var messageText = (message ?? pane.controller.text).trim();
+    ChatMessage? userMessage;
 
     if (selectedModel == null || selectedModel.isEmpty) {
       _showSnackBar('No model selected. Select a model first.');
       return;
     }
 
-    if ((messageText.isEmpty && pane.attachedFiles.isEmpty) ||
-        pane.isGenerating ||
-        pane.isSending) {
-      return;
+    if (regenerate) {
+      for (var i = pane.messages.length - 1; i >= 0; i--) {
+        if (pane.messages[i].isUser) {
+          userMessage = pane.messages[i];
+          messageText = userMessage.text.trim();
+          break;
+        }
+      }
+      if (userMessage == null) return;
+    } else {
+      if (messageText.isEmpty && pane.attachedFiles.isEmpty) return;
     }
 
-    ChatMessage userMessage;
-    if (regenerate) {
-      userMessage = pane.messages.lastWhere((msg) => msg.isUser);
-    } else {
+    if (pane.isGenerating || pane.isSending) return;
+
+    if (!regenerate) {
       final attachmentPaths =
           pane.attachedFiles.map((file) => file.path).toList();
-      userMessage = ChatMessage(
+      final newUserMessage = ChatMessage(
         text: messageText,
         isUser: true,
         timestamp: DateTime.now(),
         attachedFiles: attachmentPaths.isNotEmpty ? attachmentPaths : null,
         details: _buildUserMessageDetails(messageText, attachmentPaths),
       );
+      userMessage = newUserMessage;
 
       setState(() {
-        pane.messages.add(userMessage);
+        pane.messages.add(newUserMessage);
         pane.controller.clear();
         pane.attachedFiles.clear();
       });
     }
 
+    final activeUserMessage = userMessage!;
+
     await _ensureConversationForPane(pane, provider);
 
     final fileTypes =
-        FileAttachmentHelper.separateFileTypes(userMessage.attachedFiles);
+        FileAttachmentHelper.separateFileTypes(activeUserMessage.attachedFiles);
     final contextMessages = ChatMessageBuilder.extractContextMessages([
       ...pane.messages,
       ChatMessage(text: '', isUser: false, timestamp: DateTime.now()),
     ]);
-    var toolContext = const LocalToolContext([]);
+    var toolContext = provider.enableToolCalling
+        ? await LocalToolService.contextForPrompt(activeUserMessage.text)
+        : const LocalToolContext([]);
+    final effectivePrompt = provider.enableToolCalling
+        ? LocalToolService.composePrompt(activeUserMessage.text, toolContext)
+        : activeUserMessage.text;
     final requestDetails = _buildRequestDetails(
       pane: pane,
       provider: provider,
       model: selectedModel,
-      prompt: userMessage.text,
+      prompt: activeUserMessage.text,
+      effectivePrompt: effectivePrompt,
       contextMessages: contextMessages,
-      attachments: userMessage.attachedFiles ?? const [],
+      attachments: activeUserMessage.attachedFiles ?? const [],
       fileTypes: fileTypes,
       toolContext: toolContext,
     );
@@ -351,7 +453,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
 
     final messagesArray = ChatMessageBuilder.buildMessagesArray(
       contextMessages: contextMessages,
-      currentMessageText: userMessage.text,
+      currentMessageText: effectivePrompt,
     );
 
     Map<String, dynamic>? finalOllamaPayload;
@@ -359,10 +461,11 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
     try {
       await for (final event in pane.ollamaService.generateChatResponse(
         model: selectedModel,
-        prompt: userMessage.text,
+        prompt: effectivePrompt,
         messagesArray: messagesArray,
         systemPrompt: LocalToolService.applySystemInstructions(
           provider.useSystemPrompt ? provider.systemPrompt : null,
+          enableTools: provider.enableToolCalling,
         ),
         temperature: provider.temperature,
         maxTokens: provider.maxTokens,
@@ -372,14 +475,18 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
         audio: fileTypes.audio,
         videos: fileTypes.videos,
         otherFiles: fileTypes.otherFiles,
-        tools: LocalToolService.ollamaToolDefinitions(),
-        toolExecutor: (toolCalls) async {
-          final batch =
-              await LocalToolService.executeOllamaToolCalls(toolCalls);
-          toolContext = toolContext.merge(batch.context);
-          requestDetails['tools'] = toolContext.toDetails();
-          return batch.toolMessages;
-        },
+        tools: provider.enableToolCalling
+            ? LocalToolService.ollamaToolDefinitions()
+            : null,
+        toolExecutor: provider.enableToolCalling
+            ? (toolCalls) async {
+                final batch =
+                    await LocalToolService.executeOllamaToolCalls(toolCalls);
+                toolContext = toolContext.merge(batch.context);
+                requestDetails['tools'] = toolContext.toDetails();
+                return batch.toolMessages;
+              }
+            : null,
         requestMetadata: requestDetails,
       )) {
         if (!mounted) break;
@@ -419,32 +526,32 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
         }
       }
     } finally {
-      if (!mounted) return;
+      if (mounted) {
+        final finalDetails = _buildAssistantDetails(
+          pane: pane,
+          requestDetails: requestDetails,
+          ollamaPayload: finalOllamaPayload,
+          status: finalOllamaPayload == null &&
+                  pane.responseBuffer.startsWith('Error:')
+              ? 'error'
+              : 'complete',
+        );
 
-      final finalDetails = _buildAssistantDetails(
-        pane: pane,
-        requestDetails: requestDetails,
-        ollamaPayload: finalOllamaPayload,
-        status: finalOllamaPayload == null &&
-                pane.responseBuffer.startsWith('Error:')
-            ? 'error'
-            : 'complete',
-      );
+        _updateStreamingAssistant(
+          pane,
+          provider,
+          detailsOverride: finalDetails,
+          isThinking: false,
+        );
 
-      _updateStreamingAssistant(
-        pane,
-        provider,
-        detailsOverride: finalDetails,
-        isThinking: false,
-      );
+        setState(() {
+          pane.isGenerating = false;
+          pane.isSending = false;
+        });
 
-      setState(() {
-        pane.isGenerating = false;
-        pane.isSending = false;
-      });
-
-      await _persistPane(pane, provider);
-      _stopStatsTimerIfIdle();
+        await _persistPane(pane, provider);
+        _stopStatsTimerIfIdle();
+      }
     }
   }
 
@@ -474,7 +581,11 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
 
     _syncLeftPaneToProviderIfNeeded(pane, provider);
 
-    setState(() {});
+    setState(() {
+      if (pane.side == _PaneSide.left && _chatSearchQuery.trim().isNotEmpty) {
+        _refreshChatSearchMatches(updateState: false);
+      }
+    });
     if (pane.scrollHelper.isAutoScrollEnabled) {
       pane.scrollHelper.scrollToBottom();
     }
@@ -576,8 +687,13 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
     setState(() {
       pane.conversationIndex = null;
       pane.messages = [];
+      pane.messageKeys.clear();
       pane.attachedFiles.clear();
       pane.controller.clear();
+      if (side == _PaneSide.left) {
+        _chatSearchMatches = [];
+        _chatSearchCursor = 0;
+      }
     });
 
     if (side == _PaneSide.left) {
@@ -603,8 +719,12 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
       pane.conversationIndex = index;
       pane.messages =
           conversation.messages.map((message) => message.copyWith()).toList();
+      pane.messageKeys.clear();
       pane.attachedFiles.clear();
       pane.controller.clear();
+      if (side == _PaneSide.left) {
+        _refreshChatSearchMatches(updateState: false);
+      }
     });
 
     if (side == _PaneSide.left) {
@@ -632,6 +752,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
       if (pane.conversationIndex == index) {
         pane.conversationIndex = null;
         pane.messages = [];
+        pane.messageKeys.clear();
       } else if (pane.conversationIndex != null &&
           pane.conversationIndex! > index) {
         pane.conversationIndex = pane.conversationIndex! - 1;
@@ -642,6 +763,18 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
     unawaited(_conversationManager.save(provider));
   }
 
+  void _toggleConversationPin(int index) {
+    final provider = context.read<ChatProvider>();
+    if (index < 0 || index >= provider.conversations.length) return;
+
+    final conversation = provider.conversations[index];
+    provider.updateConversation(
+      index,
+      conversation.copyWith(isPinned: !conversation.isPinned),
+    );
+    unawaited(_conversationManager.save(provider));
+  }
+
   void _regenerateLastResponse(_PaneSide side) {
     final pane = _pane(side);
     if (pane.messages.length < 2 || pane.isGenerating) return;
@@ -649,6 +782,10 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
 
     setState(() {
       pane.messages.removeLast();
+      pane.messageKeys.clear();
+      if (side == _PaneSide.left) {
+        _refreshChatSearchMatches(updateState: false);
+      }
     });
 
     final provider = context.read<ChatProvider>();
@@ -674,6 +811,10 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
         details: _buildUserMessageDetails(trimmedText, attachments),
       );
       pane.messages = pane.messages.sublist(0, index + 1);
+      pane.messageKeys.clear();
+      if (side == _PaneSide.left) {
+        _refreshChatSearchMatches(updateState: false);
+      }
     });
 
     _syncLeftPaneToProviderIfNeeded(pane, provider);
@@ -833,11 +974,13 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
       builder: (context) => SettingsDialog(
         systemPromptController: _systemPromptController,
         useSystemPrompt: provider.useSystemPrompt,
+        enableToolCalling: provider.enableToolCalling,
         temperature: provider.temperature,
         maxTokens: provider.maxTokens,
         numCtx: provider.numCtx,
         onNumCtxChanged: provider.setNumCtx,
         onUseSystemPromptChanged: provider.setUseSystemPrompt,
+        onEnableToolCallingChanged: provider.setEnableToolCalling,
         onTemperatureChanged: provider.setTemperature,
         onMaxTokensChanged: provider.setMaxTokens,
         onSave: () {
@@ -962,6 +1105,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
     required ChatProvider provider,
     required String model,
     required String prompt,
+    required String effectivePrompt,
     required List<ChatMessage> contextMessages,
     required List<String> attachments,
     required ({
@@ -979,7 +1123,9 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
       'model': model,
       'prompt': {
         'characters': prompt.length,
+        'effective_characters': effectivePrompt.length,
         'estimated_tokens': _estimateTokens(prompt),
+        'effective_estimated_tokens': _estimateTokens(effectivePrompt),
         'context_messages': contextMessages.length,
         'context_characters': contextMessages.fold<int>(
             0, (sum, message) => sum + message.text.length),
@@ -991,6 +1137,10 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
         'system_prompt_used': provider.useSystemPrompt,
         'system_prompt_characters':
             provider.useSystemPrompt ? provider.systemPrompt.length : 0,
+        'tool_calling_enabled': provider.enableToolCalling,
+        'available_tool_count': provider.enableToolCalling
+            ? LocalToolService.tierOneTools.length
+            : 0,
       },
       'attachments': {
         'total': attachments.length,
@@ -1137,6 +1287,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
                 onLoadConversation: (index) =>
                     _loadConversation(index, side: _PaneSide.left),
                 onDeleteConversation: _deleteConversation,
+                onTogglePinConversation: _toggleConversationPin,
                 onExportConversation: _exportConversation,
                 onExportAll: _exportAllConversations,
                 onToggleTheme: widget.toggleTheme,
@@ -1176,17 +1327,22 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
     return Column(
       children: [
         ChatHeader(
+          onSearchChanged: _setChatSearchQuery,
           isDarkMode: widget.isDarkMode,
-          isSidebarVisible: provider.isSidebarVisible,
           selectedModel: _leftPane.selectedModel ?? provider.selectedModel,
           availableModels: _availableModels,
           isAlwaysOnTop: _isAlwaysOnTop,
-          onToggleSidebar: _toggleSidebar,
           onModelChanged: (model) => _setPaneModel(_PaneSide.left, model),
           onSettingsTap: _showSettingsDialog,
           onMiniModeTap: _toggleMiniMode,
           onToggleAlwaysOnTop: _toggleAlwaysOnTop,
           onRefreshModels: _fetchAvailableModels,
+          onSearchNext: _goToNextSearchMatch,
+          onSearchPrevious: _goToPreviousSearchMatch,
+          onClearSearch: _clearChatSearch,
+          searchQuery: _chatSearchQuery,
+          searchMatchCount: _chatSearchMatches.length,
+          searchActiveIndex: _chatSearchCursor,
         ),
         Expanded(child: _buildChatPane(_PaneSide.left, showPaneHeader: false)),
       ],
@@ -1269,7 +1425,12 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
                     }
 
                     final message = pane.messages[index];
+                    final messageKey = pane.messageKeys.putIfAbsent(
+                      index,
+                      GlobalKey.new,
+                    );
                     return MessageBubble(
+                      key: messageKey,
                       message: message,
                       useFullWidth: _isSplitMode,
                       isDarkMode: widget.isDarkMode,
@@ -1437,12 +1598,6 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
       ),
       child: Row(
         children: [
-          if (side == _PaneSide.left)
-            IconButton(
-              icon: const Icon(Icons.menu_rounded),
-              onPressed: _toggleSidebar,
-              tooltip: 'Sidebar',
-            ),
           Icon(
             side == _PaneSide.left
                 ? Icons.looks_one_rounded

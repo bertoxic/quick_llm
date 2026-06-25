@@ -12,10 +12,14 @@ class Conversation {
   /// When this conversation was created
   DateTime timestamp;
 
+  /// Whether the conversation should stay at the top of the sidebar.
+  bool isPinned;
+
   Conversation({
     required this.title,
     required this.messages,
     required this.timestamp,
+    this.isPinned = false,
   });
 
   /// Converts the conversation to a JSON map for storage
@@ -23,6 +27,7 @@ class Conversation {
         'title': title,
         'messages': messages.map((m) => m.toJson()).toList(),
         'timestamp': timestamp.toIso8601String(),
+        'isPinned': isPinned,
       };
 
   /// Creates a Conversation from a JSON map
@@ -32,6 +37,7 @@ class Conversation {
             .map((m) => ChatMessage.fromJson(m as Map<String, dynamic>))
             .toList(),
         timestamp: DateTime.parse(json['timestamp'] as String),
+        isPinned: json['isPinned'] == true,
       );
 
   /// Creates a copy of this conversation with optional field replacements
@@ -39,11 +45,13 @@ class Conversation {
     String? title,
     List<ChatMessage>? messages,
     DateTime? timestamp,
+    bool? isPinned,
   }) {
     return Conversation(
       title: title ?? this.title,
       messages: messages ?? List.from(this.messages),
       timestamp: timestamp ?? this.timestamp,
+      isPinned: isPinned ?? this.isPinned,
     );
   }
 
@@ -99,7 +107,7 @@ class Conversation {
 
   @override
   String toString() {
-    return 'Conversation(title: $title, messageCount: $messageCount, timestamp: $timestamp)';
+    return 'Conversation(title: $title, messageCount: $messageCount, timestamp: $timestamp, isPinned: $isPinned)';
   }
 
   @override
@@ -108,11 +116,12 @@ class Conversation {
     return other is Conversation &&
         other.title == title &&
         other.timestamp == timestamp &&
+        other.isPinned == isPinned &&
         _listEquals(other.messages, messages);
   }
 
   @override
-  int get hashCode => Object.hash(title, timestamp, messages);
+  int get hashCode => Object.hash(title, timestamp, isPinned, messages);
 
   /// Helper method to compare lists
   bool _listEquals(List a, List b) {

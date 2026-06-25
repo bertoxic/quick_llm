@@ -32,10 +32,11 @@ class ChatProvider with ChangeNotifier {
   // Settings
   String? _selectedModel;
   double _temperature = 0.7;
-  int _maxTokens = 256000;
+  int _maxTokens = 2048;
   String _systemPrompt = '';
   bool _useSystemPrompt = false;
-  bool _isDarkMode = true;
+  bool _enableToolCalling = true;
+  bool _isDarkMode = false;
   bool _isSidebarVisible = true;
 
   // Getters
@@ -50,6 +51,7 @@ class ChatProvider with ChangeNotifier {
   int get maxTokens => _maxTokens;
   String get systemPrompt => _systemPrompt;
   bool get useSystemPrompt => _useSystemPrompt;
+  bool get enableToolCalling => _enableToolCalling;
   bool get isDarkMode => _isDarkMode;
   bool get isSidebarVisible => _isSidebarVisible;
   bool get hasValidModel =>
@@ -192,6 +194,11 @@ class ChatProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  void setEnableToolCalling(bool enabled) {
+    _enableToolCalling = enabled;
+    notifyListeners();
+  }
+
   void toggleDarkMode() {
     _isDarkMode = !_isDarkMode;
     notifyListeners();
@@ -219,6 +226,7 @@ class ChatProvider with ChangeNotifier {
     int? maxTokens,
     String? systemPrompt,
     bool? useSystemPrompt,
+    bool? enableToolCalling,
     bool? isDarkMode,
     bool? isSidebarVisible,
     int? numCtx,
@@ -228,6 +236,7 @@ class ChatProvider with ChangeNotifier {
     if (maxTokens != null) _maxTokens = maxTokens;
     if (systemPrompt != null) _systemPrompt = systemPrompt;
     if (useSystemPrompt != null) _useSystemPrompt = useSystemPrompt;
+    if (enableToolCalling != null) _enableToolCalling = enableToolCalling;
     if (isDarkMode != null) _isDarkMode = isDarkMode;
     if (isSidebarVisible != null) _isSidebarVisible = isSidebarVisible;
     if (numCtx != null) _numCtx = numCtx;

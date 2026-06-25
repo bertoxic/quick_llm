@@ -14,6 +14,7 @@ class Sidebar extends StatefulWidget {
   final VoidCallback onNewChat;
   final Function(int) onLoadConversation;
   final Function(int) onDeleteConversation;
+  final Function(int) onTogglePinConversation;
   final Function(Conversation) onExportConversation;
   final VoidCallback onExportAll;
   final VoidCallback onToggleTheme;
@@ -41,6 +42,7 @@ class Sidebar extends StatefulWidget {
     required this.onNewChat,
     required this.onLoadConversation,
     required this.onDeleteConversation,
+    required this.onTogglePinConversation,
     required this.onExportConversation,
     required this.onExportAll,
     required this.onToggleTheme,
@@ -73,13 +75,30 @@ class _SidebarState extends State<Sidebar> {
     super.dispose();
   }
 
-  List<Conversation> get _filteredConversations {
-    if (_searchQuery.trim().isEmpty) return widget.conversations;
-    final query = _searchQuery.toLowerCase();
-    return widget.conversations
-        .where(
-            (conversation) => conversation.title.toLowerCase().contains(query))
-        .toList();
+  List<({int index, Conversation conversation})> get _filteredConversations {
+    final indexed = widget.conversations
+        .asMap()
+        .entries
+        .map((entry) => (index: entry.key, conversation: entry.value));
+    final filtered = _searchQuery.trim().isEmpty
+        ? indexed
+        : indexed.where((entry) {
+            final query = _searchQuery.toLowerCase();
+            final titleMatches =
+                entry.conversation.title.toLowerCase().contains(query);
+            final messageMatches = entry.conversation.messages.any(
+              (message) => message.text.toLowerCase().contains(query),
+            );
+            return titleMatches || messageMatches;
+          });
+    final sorted = filtered.toList()
+      ..sort((a, b) {
+        if (a.conversation.isPinned != b.conversation.isPinned) {
+          return a.conversation.isPinned ? -1 : 1;
+        }
+        return b.conversation.timestamp.compareTo(a.conversation.timestamp);
+      });
+    return sorted;
   }
 
   String? get _modelValue {
@@ -353,8 +372,8 @@ class _SidebarState extends State<Sidebar> {
       padding: EdgeInsets.zero,
       itemCount: filtered.length,
       itemBuilder: (context, index) {
-        final actualIndex = widget.conversations.indexOf(filtered[index]);
-        return _buildConversationTile(actualIndex, filtered[index]);
+        final entry = filtered[index];
+        return _buildConversationTile(entry.index, entry.conversation);
       },
     );
   }
@@ -401,9 +420,11 @@ class _SidebarState extends State<Sidebar> {
                 Row(
                   children: [
                     Icon(
-                      isSelected
-                          ? Icons.chat_bubble_rounded
-                          : Icons.chat_bubble_outline_rounded,
+                      conversation.isPinned
+                          ? Icons.push_pin_rounded
+                          : isSelected
+                              ? Icons.chat_bubble_rounded
+                              : Icons.chat_bubble_outline_rounded,
                       size: 14,
                       color: isSelected ? AppColors.orange : Colors.white70,
                     ),
@@ -494,6 +515,8 @@ class _SidebarState extends State<Sidebar> {
     Conversation conversation,
     bool isSelected,
   ) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return PopupMenuButton<String>(
       padding: EdgeInsets.zero,
       tooltip: 'Conversation actions',
@@ -502,10 +525,13 @@ class _SidebarState extends State<Sidebar> {
         size: 16,
         color: isSelected ? AppColors.charcoal : Colors.white70,
       ),
-      color: Colors.white,
+      color: colorScheme.surfaceContainerHigh,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       onSelected: (value) {
         switch (value) {
+          case 'pin':
+            widget.onTogglePinConversation(index);
+            break;
           case 'export':
             widget.onExportConversation(conversation);
             break;
@@ -518,6 +544,15 @@ class _SidebarState extends State<Sidebar> {
         }
       },
       itemBuilder: (context) => [
+        PopupMenuItem(
+          value: 'pin',
+          child: _MenuRow(
+            icon: conversation.isPinned
+                ? Icons.push_pin_rounded
+                : Icons.push_pin_outlined,
+            label: conversation.isPinned ? 'Unpin' : 'Pin',
+          ),
+        ),
         if (widget.onEnableSplitMode != null && !widget.isSplitMode)
           const PopupMenuItem(
             value: 'split',
@@ -735,11 +770,16 @@ class _MenuRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Row(
       children: [
-        Icon(icon, size: 17, color: AppColors.charcoal),
+        Icon(icon, size: 17, color: colorScheme.onSurface),
         const SizedBox(width: 10),
-        Text(label),
+        Text(
+          label,
+          style: TextStyle(color: colorScheme.onSurface),
+        ),
       ],
     );
   }

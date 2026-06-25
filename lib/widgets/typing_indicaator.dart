@@ -75,7 +75,7 @@ class _TypingIndicatorState extends State<TypingIndicator>
                 Text(
                   widget.modelName == null
                       ? 'Thinking...'
-                      : '${widget.modelName} is thinking...',
+                      : '${widget.modelName} is warming up...',
                   style: const TextStyle(
                     color: AppColors.muted,
                     fontSize: 12,

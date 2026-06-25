@@ -23,6 +23,7 @@ class StorageService {
       'maxTokens': prefs.getInt('maxTokens') ?? 2048,
       'numCtx': prefs.getInt('numCtx') ?? 32768,
       'useSystemPrompt': prefs.getBool('useSystemPrompt') ?? false,
+      'enableToolCalling': prefs.getBool('enableToolCalling') ?? true,
       'monitorClipboard': prefs.getBool('monitorClipboard') ?? false,
       'copyFileAttachments': prefs.getBool('copyFileAttachments') ?? true,
     };
@@ -51,6 +52,10 @@ class StorageService {
     if (preferences.containsKey('useSystemPrompt')) {
       await prefs.setBool('useSystemPrompt', preferences['useSystemPrompt']);
     }
+    if (preferences.containsKey('enableToolCalling')) {
+      await prefs.setBool(
+          'enableToolCalling', preferences['enableToolCalling']);
+    }
     if (preferences.containsKey('monitorClipboard')) {
       await prefs.setBool('monitorClipboard', preferences['monitorClipboard']);
     }
@@ -78,7 +83,7 @@ class StorageService {
 
       if (!shouldCopy) {
         // Just return the original path (reference only)
-        debugPrint('📌 Using file reference: $tempFilePath');
+        debugPrint('Using file reference: $tempFilePath');
         return tempFilePath;
       }
 
@@ -95,11 +100,11 @@ class StorageService {
       final permanentPath = '${attachmentsDir.path}/$timestamp$extension';
 
       await sourceFile.copy(permanentPath);
-      debugPrint('✅ File copied to permanent storage: $permanentPath');
+      debugPrint('File copied to permanent storage: $permanentPath');
 
       return permanentPath;
     } catch (e) {
-      debugPrint('❌ Error saving attachment: $e');
+      debugPrint('Error saving attachment: $e');
       rethrow;
     }
   }
@@ -161,15 +166,15 @@ class StorageService {
           if (!referencedPaths.contains(entity.path)) {
             await entity.delete();
             deletedCount++;
-            debugPrint('🗑️ Deleted orphaned attachment: ${entity.path}');
+            debugPrint('Deleted orphaned attachment: ${entity.path}');
           }
         }
       }
 
-      debugPrint('✅ Cleanup complete: $deletedCount orphaned files deleted');
+      debugPrint('Cleanup complete: $deletedCount orphaned files deleted');
       return deletedCount;
     } catch (e) {
-      debugPrint('❌ Error during cleanup: $e');
+      debugPrint('Error during cleanup: $e');
       return 0;
     }
   }
@@ -186,7 +191,7 @@ class StorageService {
           .map((json) => Conversation.fromJson(jsonDecode(json)))
           .toList();
     } catch (e) {
-      print('Error loading conversations: $e');
+      debugPrint('Error loading conversations: $e');
       return [];
     }
   }
@@ -200,7 +205,7 @@ class StorageService {
           conversations.map((conv) => jsonEncode(conv.toJson())).toList();
       await prefs.setStringList('conversations', conversationsJson);
     } catch (e) {
-      print('Error saving conversations: $e');
+      debugPrint('Error saving conversations: $e');
     }
   }
 
@@ -213,7 +218,7 @@ class StorageService {
 
       // Clear conversations from SharedPreferences
       await prefs.remove('conversations');
-      debugPrint('✅ All conversations cleared from storage');
+      debugPrint('All conversations cleared from storage');
 
       // Clean up all attachment files
       final directory = await getApplicationDocumentsDirectory();
@@ -227,12 +232,12 @@ class StorageService {
             deletedCount++;
           }
         }
-        debugPrint('✅ Deleted $deletedCount attachment files');
+        debugPrint('Deleted $deletedCount attachment files');
       }
 
       return true;
     } catch (e) {
-      debugPrint('❌ Error clearing conversations: $e');
+      debugPrint('Error clearing conversations: $e');
       return false;
     }
   }

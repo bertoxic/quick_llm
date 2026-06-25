@@ -165,15 +165,20 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
         prompt: fullPrompt,
         systemPrompt: LocalToolService.applySystemInstructions(
           provider.useSystemPrompt ? provider.systemPrompt : null,
+          enableTools: provider.enableToolCalling,
         ),
         temperature: provider.temperature,
         maxTokens: provider.maxTokens,
-        tools: LocalToolService.ollamaToolDefinitions(),
-        toolExecutor: (toolCalls) async {
-          final batch =
-              await LocalToolService.executeOllamaToolCalls(toolCalls);
-          return batch.toolMessages;
-        },
+        tools: provider.enableToolCalling
+            ? LocalToolService.ollamaToolDefinitions()
+            : null,
+        toolExecutor: provider.enableToolCalling
+            ? (toolCalls) async {
+                final batch =
+                    await LocalToolService.executeOllamaToolCalls(toolCalls);
+                return batch.toolMessages;
+              }
+            : null,
       );
 
       await _messageStreamHandler.handleStream(
@@ -312,15 +317,12 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
     final provider = context.read<ChatProvider>();
 
     if (provider.messages.length < 2 || provider.isGenerating) return;
+    if (provider.messages.last.isUser) return;
 
     provider.removeLastMessage();
     _syncMessagesToConversation(provider);
 
-    // Get the last user message text before sending
-    final lastUserMessage = provider.messages.last.text;
-    _controller.text = lastUserMessage;
-
-    await _sendMessage();
+    await _sendMessage(useExistingLastUser: true);
   }
 
   // Edit a message and resend
@@ -363,9 +365,11 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
     );
   }
 
-  Color get _backgroundColor => AppColors.porcelain;
+  Color get _backgroundColor =>
+      widget.isDarkMode ? AppColors.charcoal : AppColors.porcelain;
 
-  Color get _surfaceColor => Colors.white;
+  Color get _surfaceColor =>
+      widget.isDarkMode ? const Color(0xFF252D32) : Colors.white;
 
   Color get _accentColor => AppColors.orange;
 
@@ -393,20 +397,21 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
   }
 
   Widget _buildHeader(ChatProvider provider) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: _surfaceColor,
         border: Border(
           bottom: BorderSide(
-            color: AppColors.line,
+            color: colorScheme.outlineVariant,
           ),
         ),
       ),
       child: Row(
         children: [
           // Model selector
-          const Icon(Icons.psychology, size: 18, color: AppColors.muted),
+          Icon(Icons.psychology, size: 18, color: colorScheme.onSurface),
           const SizedBox(width: 8),
           Expanded(
             child: DropdownButton<String>(
@@ -416,7 +421,7 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
               underline: Container(),
               style: TextStyle(
                 fontSize: 13,
-                color: widget.isDarkMode ? Colors.white : Colors.black87,
+                color: colorScheme.onSurface,
               ),
               items: widget.availableModels.map((model) {
                 return DropdownMenuItem(
@@ -480,6 +485,7 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
   }
 
   Widget _buildMessageList(ChatProvider provider) {
+    final colorScheme = Theme.of(context).colorScheme;
     if (provider.messages.isEmpty) {
       return Center(
         child: Column(
@@ -499,14 +505,17 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
               'Start chatting',
               style: TextStyle(
                 fontSize: 14,
-                color: AppColors.muted,
+                color: colorScheme.onSurface.withValues(alpha: 0.72),
                 fontWeight: FontWeight.w500,
               ),
             ),
             const SizedBox(height: 4),
             Text(
               'Compact mode with full markdown support',
-              style: const TextStyle(fontSize: 11, color: AppColors.muted),
+              style: TextStyle(
+                fontSize: 11,
+                color: colorScheme.onSurface.withValues(alpha: 0.62),
+              ),
             ),
           ],
         ),
@@ -547,6 +556,7 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
     required bool isLastMessage,
     required ChatProvider provider,
   }) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Column(
@@ -576,13 +586,16 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.charcoal,
+                  color: colorScheme.onSurface,
                 ),
               ),
               const SizedBox(width: 6),
               Text(
                 _formatTimestamp(message.timestamp),
-                style: const TextStyle(fontSize: 9, color: AppColors.muted),
+                style: TextStyle(
+                  fontSize: 9,
+                  color: colorScheme.onSurface.withValues(alpha: 0.56),
+                ),
               ),
               if (!message.isUser &&
                   message.thinkingText != null &&
@@ -625,18 +638,19 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
   }
 
   Widget _buildInputArea(ChatProvider provider) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: _surfaceColor,
         border: Border(
           top: BorderSide(
-            color: AppColors.line,
+            color: colorScheme.outlineVariant,
           ),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withOpacity(widget.isDarkMode ? 0.22 : 0.05),
             blurRadius: 4,
             offset: const Offset(0, -2),
           ),
@@ -653,18 +667,20 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
                 focusNode: _inputFocusNode,
                 decoration: InputDecoration(
                   hintText: 'Type a message...',
-                  hintStyle:
-                      const TextStyle(fontSize: 13, color: AppColors.muted),
+                  hintStyle: TextStyle(
+                    fontSize: 13,
+                    color: colorScheme.onSurface.withValues(alpha: 0.56),
+                  ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                     borderSide: BorderSide(
-                      color: AppColors.line,
+                      color: colorScheme.outlineVariant,
                     ),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                     borderSide: BorderSide(
-                      color: AppColors.line,
+                      color: colorScheme.outlineVariant,
                     ),
                   ),
                   focusedBorder: OutlineInputBorder(
@@ -677,7 +693,7 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
                   ),
                   isDense: true,
                 ),
-                style: const TextStyle(fontSize: 13),
+                style: TextStyle(fontSize: 13, color: colorScheme.onSurface),
                 maxLines: null,
                 textInputAction: TextInputAction.send,
                 onSubmitted: (_) =>

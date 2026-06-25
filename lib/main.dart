@@ -90,9 +90,11 @@ class _MyAppState extends State<MyApp> {
   }
 
   void toggleTheme() async {
-    context.read<ChatProvider>().toggleDarkMode();
+    final provider = context.read<ChatProvider>();
+    provider.toggleDarkMode();
+    final isDarkMode = provider.isDarkMode;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('darkMode', context.read<ChatProvider>().isDarkMode);
+    await prefs.setBool('darkMode', isDarkMode);
   }
 
   void _onOllamaConnectionSuccess() {

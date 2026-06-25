@@ -101,7 +101,7 @@ class OllamaService {
     List<String>? otherFiles,
     List<Map<String, dynamic>>? tools,
     OllamaToolExecutor? toolExecutor,
-    int maxToolIterations = 4,
+    int maxToolIterations = 32,
     Duration? timeout,
     Map<String, dynamic>? requestMetadata,
   }) async* {
@@ -183,7 +183,7 @@ class OllamaService {
         'num_predict': maxTokens,
         'num_ctx': numCtx,
       };
-      final toolSchemas =
+      var toolSchemas =
           tools == null ? const <Map<String, dynamic>>[] : List.of(tools);
       final toolIterations = <Map<String, dynamic>>[];
 
@@ -225,6 +225,23 @@ class OllamaService {
 
         if (streamedResponse.statusCode != 200) {
           final errorBody = await streamedResponse.stream.bytesToString();
+          if (toolSchemas.isNotEmpty &&
+              _isToolUnsupportedResponse(
+                streamedResponse.statusCode,
+                errorBody,
+              )) {
+            final fallback = {
+              'iteration': iteration,
+              'tool_fallback': 'disabled_for_model',
+              'reason':
+                  'Ollama reported that $model does not support native tools. Retrying this turn without tool schemas.',
+              'status_code': streamedResponse.statusCode,
+            };
+            toolIterations.add(fallback);
+            toolSchemas = const <Map<String, dynamic>>[];
+            yield OllamaStreamEvent.toolResult(fallback);
+            continue;
+          }
           yield OllamaStreamEvent.error(
             'Ollama returned ${streamedResponse.statusCode}: $errorBody',
             {'status_code': streamedResponse.statusCode, 'body': errorBody},
@@ -343,17 +360,34 @@ class OllamaService {
           return;
         }
 
-        final toolMessages = await toolExecutor(turnToolCalls);
+        late final List<Map<String, dynamic>> toolMessages;
+        String? toolExecutorError;
+        try {
+          toolMessages = await toolExecutor(turnToolCalls);
+        } catch (error) {
+          toolExecutorError = '$error';
+          toolMessages = turnToolCalls.map((call) {
+            final toolName = _toolNameForCall(call);
+            return {
+              'role': 'tool',
+              'tool_name': toolName,
+              'content':
+                  '$toolName failed: $error. Continue from the available conversation context and explain the tool failure plainly.',
+            };
+          }).toList();
+        }
         for (final toolMessage in toolMessages) {
           messages.add(toolMessage);
         }
         toolIterations.add({
           'iteration': iteration,
           'tool_calls': turnToolCalls,
+          if (toolExecutorError != null) 'tool_error': toolExecutorError,
           'tool_results': toolMessages,
         });
         yield OllamaStreamEvent.toolResult({
           'iteration': iteration,
+          if (toolExecutorError != null) 'tool_error': toolExecutorError,
           'tool_results': toolMessages,
         });
       }
@@ -372,6 +406,24 @@ class OllamaService {
         client.close();
       }
     }
+  }
+
+  bool _isToolUnsupportedResponse(int statusCode, String body) {
+    if (statusCode != 400) return false;
+    final normalized = body.toLowerCase();
+    return normalized.contains('does not support tools') ||
+        normalized.contains('do not support tools') ||
+        normalized.contains('tool support') ||
+        normalized.contains('tools are not supported');
+  }
+
+  String _toolNameForCall(Map<String, dynamic> call) {
+    final function = call['function'];
+    if (function is Map) {
+      final name = function['name'];
+      if (name != null && '$name'.trim().isNotEmpty) return '$name';
+    }
+    return 'tool';
   }
 
   Stream<String> generateResponse({

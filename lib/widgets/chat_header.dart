@@ -5,30 +5,40 @@ import '../theme/app_theme.dart';
 
 class ChatHeader extends StatefulWidget {
   final bool isDarkMode;
-  final bool isSidebarVisible;
   final String? selectedModel;
   final List<String> availableModels;
   final bool isAlwaysOnTop;
-  final VoidCallback onToggleSidebar;
   final Function(String) onModelChanged;
   final VoidCallback onSettingsTap;
   final VoidCallback onMiniModeTap;
   final VoidCallback onToggleAlwaysOnTop;
   final VoidCallback onRefreshModels;
+  final String searchQuery;
+  final int searchMatchCount;
+  final int searchActiveIndex;
+  final ValueChanged<String> onSearchChanged;
+  final VoidCallback onSearchNext;
+  final VoidCallback onSearchPrevious;
+  final VoidCallback onClearSearch;
 
   const ChatHeader({
     super.key,
     required this.isDarkMode,
-    required this.isSidebarVisible,
     required this.selectedModel,
     required this.availableModels,
     required this.isAlwaysOnTop,
-    required this.onToggleSidebar,
     required this.onModelChanged,
     required this.onSettingsTap,
     required this.onMiniModeTap,
     required this.onToggleAlwaysOnTop,
     required this.onRefreshModels,
+    this.searchQuery = '',
+    this.searchMatchCount = 0,
+    this.searchActiveIndex = 0,
+    required this.onSearchChanged,
+    required this.onSearchNext,
+    required this.onSearchPrevious,
+    required this.onClearSearch,
   });
 
   @override
@@ -44,10 +54,20 @@ class _ChatHeaderState extends State<ChatHeader>
   @override
   void initState() {
     super.initState();
+    _searchController.text = widget.searchQuery;
     _refreshController = AnimationController(
       duration: const Duration(milliseconds: 900),
       vsync: this,
     );
+  }
+
+  @override
+  void didUpdateWidget(covariant ChatHeader oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.searchQuery != widget.searchQuery &&
+        _searchController.text != widget.searchQuery) {
+      _searchController.text = widget.searchQuery;
+    }
   }
 
   @override
@@ -71,6 +91,51 @@ class _ChatHeaderState extends State<ChatHeader>
     });
   }
 
+  Widget _buildSearchSuffix(ColorScheme colorScheme) {
+    if (_searchController.text.trim().isEmpty) {
+      return const Icon(Icons.manage_search_rounded, size: 17);
+    }
+
+    final label = widget.searchMatchCount == 0
+        ? '0'
+        : '${widget.searchActiveIndex + 1}/${widget.searchMatchCount}';
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: colorScheme.onSurface.withValues(alpha: 0.62),
+            fontSize: 10,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        IconButton(
+          onPressed:
+              widget.searchMatchCount == 0 ? null : widget.onSearchPrevious,
+          icon: const Icon(Icons.keyboard_arrow_up_rounded, size: 16),
+          tooltip: 'Previous match',
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 24, minHeight: 28),
+        ),
+        IconButton(
+          onPressed: widget.searchMatchCount == 0 ? null : widget.onSearchNext,
+          icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 16),
+          tooltip: 'Next match',
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 24, minHeight: 28),
+        ),
+        IconButton(
+          onPressed: widget.onClearSearch,
+          icon: const Icon(Icons.close_rounded, size: 15),
+          tooltip: 'Clear search',
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 24, minHeight: 28),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -85,39 +150,38 @@ class _ChatHeaderState extends State<ChatHeader>
       ),
       child: Row(
         children: [
-          if (!widget.isSidebarVisible) ...[
-            _HeaderIconButton(
-              icon: Icons.menu_rounded,
-              tooltip: 'Sidebar',
-              onTap: widget.onToggleSidebar,
-            ),
-            const SizedBox(width: 10),
-          ],
           Expanded(
             child: DragToMoveArea(
-              child: SizedBox(
-                height: double.infinity,
-                child: Row(
-                  children: [
-                    _HeaderBrand(colorScheme: colorScheme),
-                    const Spacer(),
-                    _ModelStatusChip(model: widget.selectedModel),
-                  ],
+              child: LayoutBuilder(
+                builder: (context, constraints) => SizedBox(
+                  height: double.infinity,
+                  child: Row(
+                    children: [
+                      Expanded(child: _HeaderBrand(colorScheme: colorScheme)),
+                      if (constraints.maxWidth >= 300) ...[
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: _ModelStatusChip(model: widget.selectedModel),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
           const SizedBox(width: 10),
           ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 260, minWidth: 170),
+            constraints: const BoxConstraints(maxWidth: 310, minWidth: 190),
             child: SizedBox(
               height: 36,
               child: TextField(
                 controller: _searchController,
+                onChanged: widget.onSearchChanged,
                 decoration: InputDecoration(
-                  hintText: 'Search',
+                  hintText: 'Search current chat',
                   prefixIcon: const Icon(Icons.search_rounded, size: 18),
-                  suffixIcon: const Icon(Icons.filter_list_rounded, size: 17),
+                  suffixIcon: _buildSearchSuffix(colorScheme),
                   contentPadding: EdgeInsets.zero,
                   fillColor: colorScheme.surface,
                   enabledBorder: OutlineInputBorder(
@@ -186,12 +250,16 @@ class _HeaderBrand extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 10),
-        Text(
-          'Creative Chat',
-          style: TextStyle(
-            color: colorScheme.onSurface,
-            fontSize: 14,
-            fontWeight: FontWeight.w800,
+        Expanded(
+          child: Text(
+            'Creative Chat',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: colorScheme.onSurface,
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+            ),
           ),
         ),
       ],

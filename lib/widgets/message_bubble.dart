@@ -1,15 +1,20 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_highlight/themes/atom-one-light.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:markdown_widget/markdown_widget.dart';
+import 'package:gpt_markdown/gpt_markdown.dart';
+import 'package:syntax_highlight/syntax_highlight.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/chat_message.dart';
 import '../theme/app_theme.dart';
 import '../utils/helpers.dart';
+
+part 'tool_activity_panel.dart';
 
 class MessageBubble extends StatefulWidget {
   final ChatMessage message;
@@ -34,9 +39,14 @@ class MessageBubble extends StatefulWidget {
 class _MessageBubbleState extends State<MessageBubble> {
   late final TextEditingController _editController;
   final FocusNode _editFocusNode = FocusNode();
+  final GlobalKey _messageContentKey = GlobalKey();
   bool _showThinking = false;
   bool _showDetails = false;
   bool _isEditing = false;
+  double? _toolActivitySideHeight;
+
+  static const double _initialToolActivitySideHeight = 120;
+  static const double _minimumToolActivitySideHeight = 88;
 
   @override
   void initState() {
@@ -223,57 +233,98 @@ class _MessageBubbleState extends State<MessageBubble> {
     }
   }
 
+  void _scheduleToolActivitySideMeasurement() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      final renderBox =
+          _messageContentKey.currentContext?.findRenderObject() as RenderBox?;
+      if (renderBox == null || !renderBox.hasSize) return;
+
+      final nextHeight = math.max(
+        _minimumToolActivitySideHeight,
+        renderBox.size.height,
+      );
+      if (_toolActivitySideHeight != null &&
+          (_toolActivitySideHeight! - nextHeight).abs() < 8) {
+        return;
+      }
+
+      setState(() => _toolActivitySideHeight = nextHeight);
+    });
+  }
+
   Widget _buildAssistantMessage(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
     final maxWidth = widget.useFullWidth ? width * 0.92 : width * 0.70;
     final toolActivities = _ToolActivityData.fromMessage(widget.message);
-    final messageContent = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        if (widget.message.attachedFiles?.isNotEmpty ?? false)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: FileAttachmentsWidget(
-              files: widget.message.attachedFiles!,
-              isDarkMode: widget.isDarkMode,
+    final messageContent = KeyedSubtree(
+      key: _messageContentKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (widget.message.attachedFiles?.isNotEmpty ?? false)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: FileAttachmentsWidget(
+                files: widget.message.attachedFiles!,
+                isDarkMode: widget.isDarkMode,
+              ),
             ),
-          ),
-        if (widget.message.thinkingText != null)
-          ThinkingSectionWidget(
-            thinkingText: widget.message.thinkingText!,
-            isThinking: widget.message.isThinking,
-            isDarkMode: widget.isDarkMode,
-            showThinking: _showThinking,
-            onToggle: () => setState(() => _showThinking = !_showThinking),
-          ),
-        if (widget.message.text.isNotEmpty)
-          MarkdownContentWidget(
-            text: widget.message.text,
-            isUser: false,
-            isDarkMode: widget.isDarkMode,
-          ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            MessageMetadataWidget(
-              timestamp: widget.message.timestamp,
-              modelName: widget.message.modelName,
+          if (widget.message.thinkingText != null)
+            ThinkingSectionWidget(
+              thinkingText: widget.message.thinkingText!,
+              isThinking: widget.message.isThinking,
+              isDarkMode: widget.isDarkMode,
+              showThinking: _showThinking,
+              onToggle: () => setState(() => _showThinking = !_showThinking),
+            ),
+          if (widget.message.text.isNotEmpty)
+            MarkdownContentWidget(
+              text: widget.message.text,
               isUser: false,
               isDarkMode: widget.isDarkMode,
             ),
-            const Spacer(),
-            MessageActionButtons(
-              text: widget.message.text,
-              onRegenerate: widget.onRegenerate,
-            ),
-          ],
-        ),
-        MessageDetailsDisclosure(
-          message: widget.message,
-          isExpanded: _showDetails,
-          onToggle: () => setState(() => _showDetails = !_showDetails),
-        ),
-      ],
+          const SizedBox(height: 8),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final metadata = MessageMetadataWidget(
+                timestamp: widget.message.timestamp,
+                modelName: widget.message.modelName,
+                isUser: false,
+                isDarkMode: widget.isDarkMode,
+              );
+              final actions = MessageActionButtons(
+                text: widget.message.text,
+                onRegenerate: widget.onRegenerate,
+              );
+
+              if (constraints.maxWidth < 240) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(width: constraints.maxWidth, child: metadata),
+                    const SizedBox(height: 4),
+                    actions,
+                  ],
+                );
+              }
+
+              return Row(
+                children: [
+                  Expanded(child: metadata),
+                  actions,
+                ],
+              );
+            },
+          ),
+          MessageDetailsDisclosure(
+            message: widget.message,
+            isExpanded: _showDetails,
+            onToggle: () => setState(() => _showDetails = !_showDetails),
+          ),
+        ],
+      ),
     );
 
     return Padding(
@@ -285,16 +336,20 @@ class _MessageBubbleState extends State<MessageBubble> {
             builder: (context, constraints) {
               if (toolActivities.isEmpty) return messageContent;
 
-              final sidebar = _ToolActivitySidebar(
-                activities: toolActivities,
-                isDarkMode: widget.isDarkMode,
-              );
-
               if (constraints.maxWidth >= 640) {
+                _scheduleToolActivitySideMeasurement();
                 return Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    SizedBox(width: 236, child: sidebar),
+                    SizedBox(
+                      width: 236,
+                      child: _ToolActivitySideList(
+                        activities: toolActivities,
+                        isDarkMode: widget.isDarkMode,
+                        maxHeight: _toolActivitySideHeight ??
+                            _initialToolActivitySideHeight,
+                      ),
+                    ),
                     const SizedBox(width: 14),
                     Expanded(child: messageContent),
                   ],
@@ -304,9 +359,12 @@ class _MessageBubbleState extends State<MessageBubble> {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  sidebar,
-                  const SizedBox(height: 10),
                   messageContent,
+                  const SizedBox(height: 10),
+                  _ToolActivitySummaryBar(
+                    activities: toolActivities,
+                    isDarkMode: widget.isDarkMode,
+                  ),
                 ],
               );
             },
@@ -321,12 +379,14 @@ class MarkdownContentWidget extends StatelessWidget {
   final String text;
   final bool isUser;
   final bool isDarkMode;
+  final bool isSelectable;
 
   const MarkdownContentWidget({
     super.key,
     required this.text,
     required this.isUser,
     required this.isDarkMode,
+    this.isSelectable = true,
   });
 
   @override
@@ -336,106 +396,45 @@ class MarkdownContentWidget extends StatelessWidget {
     final textColor = isUser ? Colors.white : theme.colorScheme.onSurface;
     final blockSurface =
         isDark ? theme.colorScheme.surfaceContainerHigh : Colors.white;
-    final inlineCodeBackground =
-        isUser ? Colors.white24 : theme.colorScheme.surfaceContainerHighest;
     final lineColor = theme.colorScheme.outlineVariant;
 
-    return MarkdownWidget(
-      data: text,
-      shrinkWrap: true,
-      selectable: true,
-      padding: EdgeInsets.zero,
-      config: MarkdownConfig(
-        configs: [
-          PConfig(
-            textStyle: TextStyle(fontSize: 13, height: 1.45, color: textColor),
-          ),
-          H1Config(style: _headingStyle(22, textColor)),
-          H2Config(style: _headingStyle(19, textColor)),
-          H3Config(style: _headingStyle(17, textColor)),
-          H4Config(style: _headingStyle(15, textColor)),
-          H5Config(style: _headingStyle(14, textColor)),
-          H6Config(style: _headingStyle(13, textColor)),
-          CodeConfig(
-            style: TextStyle(
-              fontSize: 12,
-              backgroundColor: inlineCodeBackground,
-              color: isUser ? Colors.white : AppColors.orange,
-              fontFamily: 'monospace',
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          PreConfig(
-            theme: atomOneLightTheme,
-            padding: const EdgeInsets.all(14),
-            margin: const EdgeInsets.symmetric(vertical: 8),
-            decoration: BoxDecoration(
-              color: blockSurface,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: lineColor),
-            ),
-            textStyle: const TextStyle(
-              fontSize: 12,
-              fontFamily: 'monospace',
-              height: 1.45,
-            ),
-            wrapper: (child, code, language) => CodeBlockWrapper(
-              child: child,
-              code: code,
-              language: language,
-              isDarkMode: isDarkMode,
-            ),
-          ),
-          BlockquoteConfig(
-            textColor: textColor.withOpacity(0.74),
-            sideColor: isUser ? Colors.white : AppColors.teal,
-            sideWith: 3,
-            padding: const EdgeInsets.fromLTRB(14, 2, 0, 2),
-            margin: const EdgeInsets.symmetric(vertical: 8),
-          ),
-          LinkConfig(
-            style: TextStyle(
-              color: isUser ? Colors.white : AppColors.orange,
-              decoration: TextDecoration.underline,
-              fontSize: 13,
-            ),
-            onTap: (url) => _handleLinkTap(url, context),
-          ),
-          HrConfig(height: 1, color: isUser ? Colors.white38 : lineColor),
-          ImgConfig(
-            builder: (url, attributes) => ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.network(
-                url,
-                errorBuilder: (context, error, stackTrace) => Container(
-                  height: 110,
-                  color: AppColors.softOrange,
-                  child: const Center(
-                    child: Icon(Icons.broken_image_outlined,
-                        color: AppColors.orange),
-                  ),
-                ),
+    final markdown = GptMarkdown(
+      text,
+      style: TextStyle(fontSize: 13, height: 1.45, color: textColor),
+      followLinkColor: true,
+      onLinkTap: (url, _) => _handleLinkTap(url, context),
+      codeBuilder: (context, language, code, closed) => CodeBlockWrapper(
+        code: code,
+        language: language,
+        isDarkMode: isDarkMode,
+        isSelectable: isSelectable,
+        child: _CodeBlockSurface(
+          code: code,
+          language: language,
+          blockSurface: blockSurface,
+          lineColor: lineColor,
+          isSelectable: isSelectable,
+        ),
+      ),
+      imageBuilder: (context, url) => ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.network(
+          url,
+          errorBuilder: (context, error, stackTrace) => Container(
+            height: 110,
+            color: AppColors.softOrange,
+            child: const Center(
+              child: Icon(
+                Icons.broken_image_outlined,
+                color: AppColors.orange,
               ),
             ),
           ),
-          ListConfig(
-            marker: (isOrdered, depth, index) => Text(
-              isOrdered ? '${index + 1}. ' : '- ',
-              style: TextStyle(color: textColor, fontSize: 13),
-            ),
-          ),
-        ],
+        ),
       ),
     );
-  }
 
-  TextStyle _headingStyle(double size, Color color) {
-    return TextStyle(
-      fontSize: size,
-      height: 1.25,
-      color: color,
-      fontWeight: FontWeight.w800,
-    );
+    return markdown;
   }
 
   Future<void> _handleLinkTap(String url, BuildContext context) async {
@@ -463,6 +462,7 @@ class CodeBlockWrapper extends StatelessWidget {
   final String code;
   final String? language;
   final bool isDarkMode;
+  final bool isSelectable;
 
   const CodeBlockWrapper({
     super.key,
@@ -470,11 +470,13 @@ class CodeBlockWrapper extends StatelessWidget {
     required this.code,
     required this.language,
     required this.isDarkMode,
+    this.isSelectable = true,
   });
 
   @override
   Widget build(BuildContext context) {
     final isSvg = _isSvgBlock(code, language);
+    final isMermaid = _isMermaidBlock(code, language);
     final codeBlock = Stack(
       children: [
         child,
@@ -485,6 +487,16 @@ class CodeBlockWrapper extends StatelessWidget {
         ),
       ],
     );
+
+    if (isMermaid) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          MermaidPreview(source: code),
+          codeBlock,
+        ],
+      );
+    }
 
     if (!isSvg) return codeBlock;
 
@@ -501,42 +513,148 @@ class CodeBlockWrapper extends StatelessWidget {
     final lang = language?.trim().toLowerCase();
     return lang == 'svg' || source.trimLeft().startsWith('<svg');
   }
+
+  bool _isMermaidBlock(String source, String? language) {
+    final lang = language?.trim().toLowerCase();
+    final trimmed = source.trimLeft().toLowerCase();
+    return lang == 'mermaid' ||
+        trimmed.startsWith('flowchart') ||
+        trimmed.startsWith('graph ') ||
+        trimmed.startsWith('mindmap');
+  }
 }
 
-/// Renders an SVG string inline as a preview above its code block.
-/// Falls back to an error card if the SVG is malformed or empty.
-class SvgSketchPreview extends StatelessWidget {
-  final String svg;
+class _CodeBlockSurface extends StatelessWidget {
+  final String code;
+  final String language;
+  final Color blockSurface;
+  final Color lineColor;
+  final bool isSelectable;
 
-  const SvgSketchPreview({super.key, required this.svg});
+  const _CodeBlockSurface({
+    required this.code,
+    required this.language,
+    required this.blockSurface,
+    required this.lineColor,
+    this.isSelectable = true,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final trimmed = svg.trim();
-    if (trimmed.isEmpty) return const SizedBox.shrink();
-
+    final codeColor = Theme.of(context).colorScheme.onSurface;
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: blockSurface,
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.line),
+        border: Border.all(color: lineColor),
       ),
-      clipBehavior: Clip.antiAlias,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxHeight: 400),
-        child: SvgPicture.string(
-          trimmed,
-          fit: BoxFit.contain,
-          placeholderBuilder: (context) => const Center(
-            child: Padding(
-              padding: EdgeInsets.all(24),
-              child: CircularProgressIndicator(strokeWidth: 2),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (language.trim().isNotEmpty) ...[
+            Text(
+              language.trim(),
+              style: const TextStyle(
+                color: AppColors.muted,
+                fontSize: 10,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: _HighlightedCodeText(
+              code,
+              language: language,
+              isSelectable: isSelectable,
+              fallbackStyle: TextStyle(
+                color: codeColor,
+                fontSize: 12,
+                fontFamily: 'monospace',
+                height: 1.45,
+              ),
             ),
           ),
-        ),
+        ],
       ),
     );
+  }
+}
+
+class _HighlightedCodeText extends StatelessWidget {
+  final String code;
+  final String language;
+  final TextStyle fallbackStyle;
+  final bool isSelectable;
+
+  const _HighlightedCodeText(
+    this.code, {
+    required this.language,
+    required this.fallbackStyle,
+    this.isSelectable = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final normalizedLanguage = _highlightLanguage(language);
+    if (normalizedLanguage == null) {
+      return isSelectable
+          ? SelectableText(code, style: fallbackStyle)
+          : Text(code, style: fallbackStyle);
+    }
+
+    return FutureBuilder<TextSpan>(
+      future: _SyntaxHighlightCache.highlight(
+        code: code,
+        language: normalizedLanguage,
+        brightness: Theme.of(context).brightness,
+        fallbackStyle: fallbackStyle,
+      ),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return isSelectable
+              ? SelectableText(code, style: fallbackStyle)
+              : Text(code, style: fallbackStyle);
+        }
+        return isSelectable
+            ? SelectableText.rich(snapshot.data!)
+            : RichText(text: snapshot.data!);
+      },
+    );
+  }
+
+  String? _highlightLanguage(String rawLanguage) {
+    final normalized = rawLanguage.trim().toLowerCase();
+    if (normalized == 'dart') return 'dart';
+    if (normalized == 'yaml' || normalized == 'yml') return 'yaml';
+    return null;
+  }
+}
+
+class _SyntaxHighlightCache {
+  static final Map<String, Future<void>> _initializers = {};
+  static final Map<Brightness, Future<HighlighterTheme>> _themes = {};
+
+  static Future<TextSpan> highlight({
+    required String code,
+    required String language,
+    required Brightness brightness,
+    required TextStyle fallbackStyle,
+  }) async {
+    await _initializers.putIfAbsent(
+      language,
+      () => Highlighter.initialize([language]),
+    );
+    final theme = await _themes.putIfAbsent(
+      brightness,
+      () => HighlighterTheme.loadForBrightness(brightness),
+    );
+    final span = Highlighter(language: language, theme: theme).highlight(code);
+    return TextSpan(style: fallbackStyle, children: [span]);
   }
 }
 
@@ -554,7 +672,7 @@ class _InlineEditButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white.withOpacity(0.16),
+      color: Colors.white.withValues(alpha: 0.16),
       borderRadius: BorderRadius.circular(7),
       child: InkWell(
         onTap: onTap,
@@ -695,527 +813,6 @@ class FilePreviewWidget extends StatelessWidget {
   }
 }
 
-class _ToolActivitySidebar extends StatelessWidget {
-  final List<_ToolActivityData> activities;
-  final bool isDarkMode;
-
-  const _ToolActivitySidebar({
-    required this.activities,
-    required this.isDarkMode,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (activities.isEmpty) return const SizedBox.shrink();
-
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final surface =
-        isDarkMode ? colorScheme.surfaceContainerHigh : Colors.white;
-    final activeAccent = activities.any((item) => item.id == 'web_search')
-        ? AppColors.teal
-        : AppColors.orange;
-
-    return Container(
-      decoration: BoxDecoration(
-        color: surface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: colorScheme.outlineVariant),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(width: 4, color: activeAccent),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(10, 10, 10, 11),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.auto_awesome_mosaic_outlined,
-                          size: 16,
-                          color: activeAccent,
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            'Tool activity',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: colorScheme.onSurface,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        ),
-                        _ToolCountBadge(count: activities.length),
-                      ],
-                    ),
-                    const SizedBox(height: 9),
-                    ...activities.map(
-                      (activity) => _ToolActivityTile(activity: activity),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ToolCountBadge extends StatelessWidget {
-  final int count;
-
-  const _ToolCountBadge({required this.count});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-      decoration: BoxDecoration(
-        color: AppColors.softTeal,
-        borderRadius: BorderRadius.circular(7),
-      ),
-      child: Text(
-        '$count',
-        style: const TextStyle(
-          color: AppColors.charcoal,
-          fontSize: 10,
-          fontWeight: FontWeight.w900,
-        ),
-      ),
-    );
-  }
-}
-
-class _ToolActivityTile extends StatelessWidget {
-  final _ToolActivityData activity;
-
-  const _ToolActivityTile({required this.activity});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final accent = _accentFor(activity.id);
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(9),
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: colorScheme.outlineVariant),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 28,
-                height: 28,
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(_iconFor(activity.id), size: 16, color: accent),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      activity.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: colorScheme.onSurface,
-                        fontSize: 11,
-                        height: 1.15,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const SizedBox(height: 5),
-                    Wrap(
-                      spacing: 5,
-                      runSpacing: 5,
-                      children: [
-                        _MiniToolBadge(
-                          label: _statusLabel(activity.status),
-                          color: _statusColor(activity.status),
-                        ),
-                        _MiniToolBadge(
-                          label: activity.uiSurface,
-                          color: AppColors.teal,
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            activity.summary,
-            style: TextStyle(
-              color: colorScheme.onSurface.withValues(alpha: 0.74),
-              fontSize: 10,
-              height: 1.3,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          if (activity.output?.isNotEmpty == true) ...[
-            const SizedBox(height: 7),
-            _ToolOutputPill(
-              icon: Icons.done_rounded,
-              label: activity.output!,
-              color: AppColors.teal,
-            ),
-          ],
-          if (activity.error?.isNotEmpty == true) ...[
-            const SizedBox(height: 7),
-            _ToolOutputPill(
-              icon: Icons.error_outline_rounded,
-              label: activity.error!,
-              color: AppColors.orange,
-            ),
-          ],
-          if (activity.steps.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            ...activity.steps.take(3).map(
-                  (step) => Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.only(top: 2),
-                          child: Icon(
-                            activity.status == 'complete'
-                                ? Icons.check_circle_rounded
-                                : Icons.radio_button_checked_rounded,
-                            size: 10,
-                            color: accent,
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            step,
-                            style: TextStyle(
-                              color:
-                                  colorScheme.onSurface.withValues(alpha: 0.68),
-                              fontSize: 10,
-                              height: 1.25,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-          ],
-          if (activity.sources.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            ...activity.sources.take(3).map(
-                  (source) => Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(
-                          Icons.link_rounded,
-                          size: 10,
-                          color: AppColors.teal,
-                        ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            source.title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: colorScheme.onSurface.withValues(
-                                alpha: 0.68,
-                              ),
-                              fontSize: 10,
-                              height: 1.25,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  static IconData _iconFor(String id) {
-    switch (id) {
-      case 'shell_command_runner':
-        return Icons.terminal_rounded;
-      case 'file_reader_writer':
-        return Icons.folder_open_rounded;
-      case 'multi_step_planner':
-        return Icons.account_tree_rounded;
-      case 'web_search':
-        return Icons.public_rounded;
-      case 'note_saver':
-        return Icons.sticky_note_2_outlined;
-      case 'web_scraper_reader':
-        return Icons.article_outlined;
-      case 'local_document_search':
-        return Icons.manage_search_rounded;
-      case 'code_executor':
-        return Icons.data_object_rounded;
-      case 'calculator':
-        return Icons.calculate_outlined;
-      case 'svg_sketch':
-        return Icons.polyline_outlined;
-      default:
-        return Icons.extension_rounded;
-    }
-  }
-
-  static Color _accentFor(String id) {
-    switch (id) {
-      case 'web_search':
-      case 'local_document_search':
-      case 'web_scraper_reader':
-        return AppColors.teal;
-      case 'calculator':
-      case 'code_executor':
-        return AppColors.orange;
-      default:
-        return AppColors.charcoal;
-    }
-  }
-
-  static Color _statusColor(String status) {
-    switch (status) {
-      case 'complete':
-        return AppColors.teal;
-      case 'failed':
-      case 'unavailable':
-        return AppColors.orange;
-      case 'ready':
-        return AppColors.orange;
-      default:
-        return AppColors.muted;
-    }
-  }
-
-  static String _statusLabel(String status) {
-    switch (status) {
-      case 'complete':
-        return 'Complete';
-      case 'failed':
-        return 'Failed';
-      case 'unavailable':
-        return 'Unavailable';
-      case 'ready':
-        return 'Ready';
-      default:
-        return 'Queued';
-    }
-  }
-}
-
-class _ToolOutputPill extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
-
-  const _ToolOutputPill({
-    required this.icon,
-    required this.label,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(7),
-        border: Border.all(color: color.withValues(alpha: 0.20)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 12, color: color),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              label,
-              maxLines: 4,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: color,
-                fontSize: 10,
-                height: 1.25,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MiniToolBadge extends StatelessWidget {
-  final String label;
-  final Color color;
-
-  const _MiniToolBadge({
-    required this.label,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(7),
-        border: Border.all(color: color.withValues(alpha: 0.22)),
-      ),
-      child: Text(
-        label,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          color: color,
-          fontSize: 9,
-          height: 1,
-          fontWeight: FontWeight.w900,
-        ),
-      ),
-    );
-  }
-}
-
-class _ToolActivityData {
-  final String id;
-  final String title;
-  final String status;
-  final String summary;
-  final String uiSurface;
-  final List<String> steps;
-  final String? output;
-  final String? error;
-  final List<_ToolSourceData> sources;
-
-  const _ToolActivityData({
-    required this.id,
-    required this.title,
-    required this.status,
-    required this.summary,
-    required this.uiSurface,
-    required this.steps,
-    this.output,
-    this.error,
-    this.sources = const [],
-  });
-
-  static List<_ToolActivityData> fromMessage(ChatMessage message) {
-    final tools = _extractToolDetails(message.details);
-    if (tools == null) return const [];
-
-    final rawActivity = tools['activity'];
-    if (rawActivity is! List) return const [];
-
-    return rawActivity
-        .whereType<Map>()
-        .map((item) => _ToolActivityData.fromMap(item))
-        .where((item) => item.title.isNotEmpty)
-        .toList();
-  }
-
-  factory _ToolActivityData.fromMap(Map<dynamic, dynamic> map) {
-    final rawSteps = map['steps'];
-    return _ToolActivityData(
-      id: '${map['id'] ?? ''}',
-      title: '${map['title'] ?? ''}',
-      status: '${map['status'] ?? 'queued'}',
-      summary: '${map['summary'] ?? ''}',
-      uiSurface: '${map['ui_surface'] ?? 'Activity sidebar'}',
-      steps: rawSteps is List
-          ? rawSteps
-              .map((step) => '$step')
-              .where((step) => step.isNotEmpty)
-              .toList()
-          : const [],
-      output: map['output'] == null ? null : '${map['output']}',
-      error: map['error'] == null ? null : '${map['error']}',
-      sources: map['sources'] is List
-          ? (map['sources'] as List)
-              .whereType<Map>()
-              .map((source) => _ToolSourceData.fromMap(source))
-              .toList()
-          : const [],
-    );
-  }
-
-  static Map<String, dynamic>? _extractToolDetails(
-    Map<String, dynamic>? details,
-  ) {
-    if (details == null) return null;
-
-    final topLevelTools = details['tools'];
-    if (topLevelTools is Map) {
-      return Map<String, dynamic>.from(topLevelTools);
-    }
-
-    final request = details['request'];
-    if (request is Map) {
-      final requestTools = request['tools'];
-      if (requestTools is Map) {
-        return Map<String, dynamic>.from(requestTools);
-      }
-    }
-
-    return null;
-  }
-}
-
-class _ToolSourceData {
-  final String title;
-  final String url;
-
-  const _ToolSourceData({
-    required this.title,
-    required this.url,
-  });
-
-  factory _ToolSourceData.fromMap(Map<dynamic, dynamic> map) {
-    return _ToolSourceData(
-      title: '${map['title'] ?? map['url'] ?? 'Source'}',
-      url: '${map['url'] ?? ''}',
-    );
-  }
-}
-
 class ImagePreviewWidget extends StatelessWidget {
   final String filePath;
   final String fileName;
@@ -1335,6 +932,7 @@ class ThinkingSectionWidget extends StatelessWidget {
   final String thinkingText;
   final bool isThinking;
   final bool isDarkMode;
+  final bool isSelectable;
   final bool showThinking;
   final VoidCallback onToggle;
 
@@ -1343,6 +941,7 @@ class ThinkingSectionWidget extends StatelessWidget {
     required this.thinkingText,
     required this.isThinking,
     required this.isDarkMode,
+    this.isSelectable = true,
     required this.showThinking,
     required this.onToggle,
   });
@@ -1404,6 +1003,7 @@ class ThinkingSectionWidget extends StatelessWidget {
                 text: thinkingText,
                 isUser: false,
                 isDarkMode: isDarkMode,
+                isSelectable: isSelectable,
               ),
             ),
         ],
@@ -1563,35 +1163,48 @@ class _DetailLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final label = Text(
+      row.label,
+      overflow: TextOverflow.ellipsis,
+      style: const TextStyle(
+        color: AppColors.muted,
+        fontSize: 10,
+        fontWeight: FontWeight.w800,
+      ),
+    );
+    final value = SelectableText(
+      row.value,
+      style: const TextStyle(
+        color: AppColors.charcoal,
+        fontSize: 10,
+        height: 1.35,
+      ),
+    );
+
     return Padding(
       padding: const EdgeInsets.only(top: 5),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 150,
-            child: Text(
-              row.label,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: AppColors.muted,
-                fontSize: 10,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: SelectableText(
-              row.value,
-              style: const TextStyle(
-                color: AppColors.charcoal,
-                fontSize: 10,
-                height: 1.35,
-              ),
-            ),
-          ),
-        ],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          if (constraints.maxWidth < 240) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                label,
+                const SizedBox(height: 2),
+                value,
+              ],
+            );
+          }
+
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(width: 150, child: label),
+              const SizedBox(width: 8),
+              Expanded(child: value),
+            ],
+          );
+        },
       ),
     );
   }
