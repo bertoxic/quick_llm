@@ -32,7 +32,6 @@ class _ChatPaneRuntime {
   final _PaneSide side;
   final TextEditingController controller = TextEditingController();
   final ScrollController scrollController = ScrollController();
-  final Map<int, GlobalKey> messageKeys = {};
   late final ScrollControllerHelper scrollHelper;
   final OllamaService ollamaService = OllamaService();
   final List<File> attachedFiles = [];
@@ -51,7 +50,6 @@ class _ChatPaneRuntime {
     controller.dispose();
     scrollHelper.dispose();
     ollamaService.dispose();
-    messageKeys.clear();
   }
 }
 
@@ -257,16 +255,20 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
   void _scrollToActiveSearchMatch() {
     if (_chatSearchMatches.isEmpty) return;
     final messageIndex = _chatSearchMatches[_chatSearchCursor];
-    final key = _leftPane.messageKeys[messageIndex];
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final context = key?.currentContext;
-      if (context == null) return;
-      Scrollable.ensureVisible(
-        context,
-        duration: const Duration(milliseconds: 260),
-        curve: Curves.easeOutCubic,
-        alignment: 0.24,
-      );
+      if (!mounted || !_leftPane.scrollController.hasClients) return;
+      final maxExtent = _leftPane.scrollController.position.maxScrollExtent;
+      final denominator = (_leftPane.messages.length - 1).clamp(1, 1 << 30);
+      final target = (maxExtent * (messageIndex / denominator))
+          .clamp(0.0, maxExtent)
+          .toDouble();
+      _leftPane.scrollController
+          .animateTo(
+            target,
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeOutCubic,
+          )
+          .catchError((_) {});
     });
   }
 
@@ -687,7 +689,6 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
     setState(() {
       pane.conversationIndex = null;
       pane.messages = [];
-      pane.messageKeys.clear();
       pane.attachedFiles.clear();
       pane.controller.clear();
       if (side == _PaneSide.left) {
@@ -719,7 +720,6 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
       pane.conversationIndex = index;
       pane.messages =
           conversation.messages.map((message) => message.copyWith()).toList();
-      pane.messageKeys.clear();
       pane.attachedFiles.clear();
       pane.controller.clear();
       if (side == _PaneSide.left) {
@@ -752,7 +752,6 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
       if (pane.conversationIndex == index) {
         pane.conversationIndex = null;
         pane.messages = [];
-        pane.messageKeys.clear();
       } else if (pane.conversationIndex != null &&
           pane.conversationIndex! > index) {
         pane.conversationIndex = pane.conversationIndex! - 1;
@@ -782,7 +781,6 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
 
     setState(() {
       pane.messages.removeLast();
-      pane.messageKeys.clear();
       if (side == _PaneSide.left) {
         _refreshChatSearchMatches(updateState: false);
       }
@@ -811,7 +809,6 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
         details: _buildUserMessageDetails(trimmedText, attachments),
       );
       pane.messages = pane.messages.sublist(0, index + 1);
-      pane.messageKeys.clear();
       if (side == _PaneSide.left) {
         _refreshChatSearchMatches(updateState: false);
       }
@@ -1425,12 +1422,10 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
                     }
 
                     final message = pane.messages[index];
-                    final messageKey = pane.messageKeys.putIfAbsent(
-                      index,
-                      GlobalKey.new,
-                    );
                     return MessageBubble(
-                      key: messageKey,
+                      key: ValueKey(
+                        '${pane.side.name}-$index-${message.timestamp.microsecondsSinceEpoch}-${message.isUser}',
+                      ),
                       message: message,
                       useFullWidth: _isSplitMode,
                       isDarkMode: widget.isDarkMode,

@@ -337,6 +337,7 @@ class ScrollControllerHelper {
   bool _isAutoScrollEnabled = true;
   bool _userHasScrolled = false;
   bool _isProgrammaticScroll = false;
+  bool _isDisposed = false;
 
   ScrollControllerHelper(this._scrollController);
 
@@ -348,6 +349,7 @@ class ScrollControllerHelper {
     required bool Function() isGenerating,
   }) {
     _scrollController.addListener(() {
+      if (_isDisposed) return;
       if (!_scrollController.hasClients) return;
       if (_isProgrammaticScroll) return;
 
@@ -365,12 +367,14 @@ class ScrollControllerHelper {
   }
 
   void resetAutoScroll() {
+    if (_isDisposed) return;
     _isAutoScrollEnabled = true;
     _userHasScrolled = false;
   }
 
   void scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_isDisposed) return;
       if (_scrollController.hasClients) {
         _isProgrammaticScroll = true;
         _scrollController
@@ -380,6 +384,10 @@ class ScrollControllerHelper {
           curve: Curves.easeOut,
         )
             .then((_) {
+          if (_isDisposed) return;
+          _isProgrammaticScroll = false;
+        }).catchError((_) {
+          if (_isDisposed) return;
           _isProgrammaticScroll = false;
         });
       }
@@ -387,6 +395,7 @@ class ScrollControllerHelper {
   }
 
   void dispose() {
+    _isDisposed = true;
     _scrollController.dispose();
   }
 }

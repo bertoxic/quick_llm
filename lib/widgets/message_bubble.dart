@@ -45,8 +45,8 @@ class _MessageBubbleState extends State<MessageBubble> {
   bool _isEditing = false;
   double? _toolActivitySideHeight;
 
-  static const double _initialToolActivitySideHeight = 120;
-  static const double _minimumToolActivitySideHeight = 88;
+  static const double _initialToolActivitySideHeight = 180;
+  static const double _minimumToolActivitySideHeight = 180;
 
   @override
   void initState() {
@@ -246,7 +246,7 @@ class _MessageBubbleState extends State<MessageBubble> {
         renderBox.size.height,
       );
       if (_toolActivitySideHeight != null &&
-          (_toolActivitySideHeight! - nextHeight).abs() < 8) {
+          (_toolActivitySideHeight! - nextHeight).abs() < 1) {
         return;
       }
 
@@ -346,7 +346,7 @@ class _MessageBubbleState extends State<MessageBubble> {
                       child: _ToolActivitySideList(
                         activities: toolActivities,
                         isDarkMode: widget.isDarkMode,
-                        maxHeight: _toolActivitySideHeight ??
+                        height: _toolActivitySideHeight ??
                             _initialToolActivitySideHeight,
                       ),
                     ),
