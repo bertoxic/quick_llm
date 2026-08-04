@@ -26,6 +26,11 @@ class StorageService {
       'enableToolCalling': prefs.getBool('enableToolCalling') ?? true,
       'monitorClipboard': prefs.getBool('monitorClipboard') ?? false,
       'copyFileAttachments': prefs.getBool('copyFileAttachments') ?? true,
+      'providerKind': prefs.getString('providerKind') ?? 'ollama',
+      'providerName': prefs.getString('providerName') ?? 'Ollama',
+      'providerEndpoint':
+          prefs.getString('providerEndpoint') ?? 'http://localhost:11434',
+      'selectedModel': prefs.getString('selectedModel'),
     };
   }
 
@@ -62,6 +67,24 @@ class StorageService {
     if (preferences.containsKey('copyFileAttachments')) {
       await prefs.setBool(
           'copyFileAttachments', preferences['copyFileAttachments']);
+    }
+    if (preferences.containsKey('providerKind')) {
+      await prefs.setString('providerKind', preferences['providerKind']);
+    }
+    if (preferences.containsKey('providerName')) {
+      await prefs.setString('providerName', preferences['providerName']);
+    }
+    if (preferences.containsKey('providerEndpoint')) {
+      await prefs.setString(
+          'providerEndpoint', preferences['providerEndpoint']);
+    }
+    if (preferences.containsKey('selectedModel')) {
+      final model = preferences['selectedModel'] as String?;
+      if (model == null || model.trim().isEmpty) {
+        await prefs.remove('selectedModel');
+      } else {
+        await prefs.setString('selectedModel', model);
+      }
     }
   }
 

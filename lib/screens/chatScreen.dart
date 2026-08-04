@@ -6,10 +6,12 @@ import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../dialogs/settings_dialog.dart';
+import '../dialogs/provider_connection_dialog.dart';
+import '../models/ai_provider.dart';
 import '../models/chat_message.dart';
 import '../models/conversation.dart';
 import '../provider/ChatProvider.dart';
-import '../services/ollama_service.dart';
+import '../services/ai_service.dart';
 import '../services/storage_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/conversation_manager.dart';
@@ -33,7 +35,7 @@ class _ChatPaneRuntime {
   final TextEditingController controller = TextEditingController();
   final ScrollController scrollController = ScrollController();
   late final ScrollControllerHelper scrollHelper;
-  final OllamaService ollamaService = OllamaService();
+  final AiService aiService = AiService(AiProviderConfig.ollama());
   final List<File> attachedFiles = [];
 
   int? conversationIndex;
@@ -49,7 +51,7 @@ class _ChatPaneRuntime {
   void dispose() {
     controller.dispose();
     scrollHelper.dispose();
-    ollamaService.dispose();
+    aiService.dispose();
   }
 }
 
@@ -292,7 +294,11 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
       numCtx: prefs['numCtx'] ?? 32768,
       useSystemPrompt: prefs['useSystemPrompt'] ?? false,
       enableToolCalling: prefs['enableToolCalling'] ?? true,
+      model: prefs['selectedModel'] as String?,
     );
+    provider.setAiProvider(AiProviderConfig.fromPreferences(prefs));
+    _leftPane.aiService.configure(provider.aiProvider);
+    _rightPane.aiService.configure(provider.aiProvider);
 
     _systemPromptController.text = provider.systemPrompt;
     setState(() {
@@ -314,14 +320,18 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
       'enableToolCalling': provider.enableToolCalling,
       'monitorClipboard': false,
       'copyFileAttachments': _copyFileAttachments,
+      'selectedModel': provider.selectedModel,
+      ...provider.aiProvider.toPreferenceValues(),
     });
   }
 
   Future<void> _fetchAvailableModels() async {
-    final models = await OllamaService().fetchAvailableModels();
+    final provider = context.read<ChatProvider>();
+    _leftPane.aiService.configure(provider.aiProvider);
+    _rightPane.aiService.configure(provider.aiProvider);
+    final models = await _leftPane.aiService.fetchAvailableModels();
     if (!mounted) return;
 
-    final provider = context.read<ChatProvider>();
     setState(() {
       _availableModels = models;
     });
@@ -330,7 +340,10 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
       provider.setSelectedModel(null);
       _leftPane.selectedModel = null;
       _rightPane.selectedModel = null;
-      _showSnackBar('No Ollama models found. Pull a model first.', duration: 5);
+      _showSnackBar(
+        'No models found for ${provider.aiProvider.displayName}. Check the connection in Settings.',
+        duration: 5,
+      );
       return;
     }
 
@@ -340,8 +353,12 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
         : models.first;
 
     provider.setSelectedModel(current);
-    _leftPane.selectedModel ??= current;
-    _rightPane.selectedModel ??= current;
+    if (!_availableModels.contains(_leftPane.selectedModel)) {
+      _leftPane.selectedModel = current;
+    }
+    if (!_availableModels.contains(_rightPane.selectedModel)) {
+      _rightPane.selectedModel = current;
+    }
   }
 
   Future<void> _sendMessage(
@@ -376,6 +393,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
     }
 
     if (pane.isGenerating || pane.isSending) return;
+    pane.aiService.configure(provider.aiProvider);
 
     if (!regenerate) {
       final attachmentPaths =
@@ -461,7 +479,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
     Map<String, dynamic>? finalOllamaPayload;
 
     try {
-      await for (final event in pane.ollamaService.generateChatResponse(
+      await for (final event in pane.aiService.generateChatResponse(
         model: selectedModel,
         prompt: effectivePrompt,
         messagesArray: messagesArray,
@@ -498,6 +516,9 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
           _updateStreamingAssistant(pane, provider);
         } else if (event.isContent) {
           pane.responseBuffer += event.delta;
+          _updateStreamingAssistant(pane, provider);
+        } else if (event.isContentReplacement) {
+          pane.responseBuffer = event.delta;
           _updateStreamingAssistant(pane, provider);
         } else if (event.isDone) {
           finalOllamaPayload = event.raw;
@@ -823,7 +844,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
     final pane = _pane(side);
     if (!pane.isGenerating) return;
 
-    pane.ollamaService.cancelGeneration();
+    pane.aiService.cancelGeneration();
     final provider = context.read<ChatProvider>();
     final stoppedDetails = _buildAssistantDetails(
       pane: pane,
@@ -960,6 +981,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
 
     if (side == _PaneSide.left) {
       provider.setSelectedModel(model);
+      unawaited(_savePreferences());
     }
   }
 
@@ -984,9 +1006,39 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
           provider.setSystemPrompt(_systemPromptController.text);
           _savePreferences();
         },
+        aiProvider: provider.aiProvider,
+        onProviderTap: _showProviderConnectionDialog,
         isDarkMode: widget.isDarkMode,
       ),
     );
+  }
+
+  Future<void> _showProviderConnectionDialog() async {
+    if (_leftPane.isGenerating || _rightPane.isGenerating) {
+      _showSnackBar(
+          'Stop active generation before changing the AI connection.');
+      return;
+    }
+
+    final provider = context.read<ChatProvider>();
+    await showDialog<void>(
+      context: context,
+      builder: (context) => ProviderConnectionDialog(
+        initialConfiguration: provider.aiProvider,
+        onSave: _applyProviderConfiguration,
+      ),
+    );
+  }
+
+  Future<void> _applyProviderConfiguration(
+      AiProviderConfig configuration) async {
+    final provider = context.read<ChatProvider>();
+    provider.setAiProvider(configuration);
+    _leftPane.aiService.configure(configuration);
+    _rightPane.aiService.configure(configuration);
+    await _savePreferences();
+    await _fetchAvailableModels();
+    await _savePreferences();
   }
 
   Future<void> _toggleAlwaysOnTop() async {
@@ -1118,6 +1170,11 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
       'pane': pane.side.name,
       'conversation_index': pane.conversationIndex,
       'model': model,
+      'provider': {
+        'name': provider.aiProvider.displayName,
+        'kind': provider.aiProvider.kind.name,
+        'endpoint': provider.aiProvider.normalizedEndpoint,
+      },
       'prompt': {
         'characters': prompt.length,
         'effective_characters': effectivePrompt.length,
@@ -1271,49 +1328,53 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
 
         return Scaffold(
           backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-          body: Row(
-            children: [
-              Sidebar(
-                isDarkMode: widget.isDarkMode,
-                isPanelVisible: provider.isSidebarVisible,
-                conversations: provider.conversations,
-                selectedConversationIndex: _leftPane.conversationIndex,
-                generatingConversationIndex: null,
-                generatingConversationIndices: _generatingConversationIndices(),
-                onNewChat: () => _startNewConversation(side: _PaneSide.left),
-                onLoadConversation: (index) =>
-                    _loadConversation(index, side: _PaneSide.left),
-                onDeleteConversation: _deleteConversation,
-                onTogglePinConversation: _toggleConversationPin,
-                onExportConversation: _exportConversation,
-                onExportAll: _exportAllConversations,
-                onToggleTheme: widget.toggleTheme,
-                onToggleSidebar: _toggleSidebar,
-                onClearAllConversations: _clearAllConversations,
-                onEnableSplitMode: _enableSplitMode,
-                isSplitMode: _isSplitMode,
-                selectedModel:
-                    _leftPane.selectedModel ?? provider.selectedModel,
-                availableModels: _availableModels,
-                onModelChanged: (model) => _setPaneModel(_PaneSide.left, model),
-                onSettingsTap: _showSettingsDialog,
-                onMiniModeTap: _toggleMiniMode,
-                onToggleAlwaysOnTop: _toggleAlwaysOnTop,
-                onRefreshModels: _fetchAvailableModels,
-                isAlwaysOnTop: _isAlwaysOnTop,
-              ),
-              Expanded(
-                child: Stack(
-                  children: [
-                    _isSplitMode
-                        ? _buildSplitLayout()
-                        : _buildSingleLayout(provider),
-                    _buildEdgeDropTarget(_PaneSide.left),
-                    _buildEdgeDropTarget(_PaneSide.right),
-                  ],
+          body: SelectionArea(
+            child: Row(
+              children: [
+                Sidebar(
+                  isDarkMode: widget.isDarkMode,
+                  isPanelVisible: provider.isSidebarVisible,
+                  conversations: provider.conversations,
+                  selectedConversationIndex: _leftPane.conversationIndex,
+                  generatingConversationIndex: null,
+                  generatingConversationIndices:
+                      _generatingConversationIndices(),
+                  onNewChat: () => _startNewConversation(side: _PaneSide.left),
+                  onLoadConversation: (index) =>
+                      _loadConversation(index, side: _PaneSide.left),
+                  onDeleteConversation: _deleteConversation,
+                  onTogglePinConversation: _toggleConversationPin,
+                  onExportConversation: _exportConversation,
+                  onExportAll: _exportAllConversations,
+                  onToggleTheme: widget.toggleTheme,
+                  onToggleSidebar: _toggleSidebar,
+                  onClearAllConversations: _clearAllConversations,
+                  onEnableSplitMode: _enableSplitMode,
+                  isSplitMode: _isSplitMode,
+                  selectedModel:
+                      _leftPane.selectedModel ?? provider.selectedModel,
+                  availableModels: _availableModels,
+                  onModelChanged: (model) =>
+                      _setPaneModel(_PaneSide.left, model),
+                  onSettingsTap: _showSettingsDialog,
+                  onMiniModeTap: _toggleMiniMode,
+                  onToggleAlwaysOnTop: _toggleAlwaysOnTop,
+                  onRefreshModels: _fetchAvailableModels,
+                  isAlwaysOnTop: _isAlwaysOnTop,
                 ),
-              ),
-            ],
+                Expanded(
+                  child: Stack(
+                    children: [
+                      _isSplitMode
+                          ? _buildSplitLayout()
+                          : _buildSingleLayout(provider),
+                      _buildEdgeDropTarget(_PaneSide.left),
+                      _buildEdgeDropTarget(_PaneSide.right),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
         );
       },

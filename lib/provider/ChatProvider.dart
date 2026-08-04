@@ -1,13 +1,10 @@
 import 'package:flutter/material.dart';
+import '../models/ai_provider.dart';
 import '../models/chat_message.dart';
 import '../models/conversation.dart';
-import '../services/ollama_service.dart';
 
 /// Provider class to manage shared chat state across the app
 class ChatProvider with ChangeNotifier {
-  // OllamaService instance
-  final OllamaService ollamaService = OllamaService();
-
   // Messages and conversations
   List<ChatMessage> _messages = [];
   List<Conversation> _conversations = [];
@@ -38,6 +35,7 @@ class ChatProvider with ChangeNotifier {
   bool _enableToolCalling = true;
   bool _isDarkMode = false;
   bool _isSidebarVisible = true;
+  AiProviderConfig _aiProvider = AiProviderConfig.ollama();
 
   // Getters
   List<ChatMessage> get messages => _messages;
@@ -54,6 +52,7 @@ class ChatProvider with ChangeNotifier {
   bool get enableToolCalling => _enableToolCalling;
   bool get isDarkMode => _isDarkMode;
   bool get isSidebarVisible => _isSidebarVisible;
+  AiProviderConfig get aiProvider => _aiProvider;
   bool get hasValidModel =>
       _selectedModel != null && _selectedModel!.isNotEmpty;
 
@@ -219,6 +218,11 @@ class ChatProvider with ChangeNotifier {
     notifyListeners();
   }
 
+  void setAiProvider(AiProviderConfig provider) {
+    _aiProvider = provider;
+    notifyListeners();
+  }
+
   // Bulk settings update (for loading from storage)
   void updateSettings({
     String? model,
@@ -241,11 +245,5 @@ class ChatProvider with ChangeNotifier {
     if (isSidebarVisible != null) _isSidebarVisible = isSidebarVisible;
     if (numCtx != null) _numCtx = numCtx;
     notifyListeners();
-  }
-
-  @override
-  void dispose() {
-    ollamaService.dispose();
-    super.dispose();
   }
 }

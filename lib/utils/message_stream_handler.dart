@@ -3,12 +3,12 @@ import 'package:flutter/material.dart';
 import '../models/chat_message.dart';
 import '../models/conversation.dart';
 import '../provider/ChatProvider.dart';
-import '../services/ollama_service.dart';
+import '../services/ai_service.dart';
 import 'thinking_parser.dart';
 
 /// Handles streaming message generation and updates
 class MessageStreamHandler {
-  final OllamaService _ollamaService;
+  final AiService _aiService;
 
   // REDUCED debounce for smoother updates (was 50ms)
   Timer? _updateDebounceTimer;
@@ -17,7 +17,7 @@ class MessageStreamHandler {
   bool _isStreamActive = false;
   StreamSubscription<String>? _activeStreamSubscription;
 
-  MessageStreamHandler(this._ollamaService);
+  MessageStreamHandler(this._aiService);
   // Track if we should continue updating
   bool _shouldContinueUpdating = true;
 
@@ -36,7 +36,7 @@ class MessageStreamHandler {
   /// Cancel any active stream
   void cancelActiveStream() {
     debugPrint('🔴 Cancelling active stream');
-    _ollamaService.cancelGeneration();
+    _aiService.cancelGeneration();
     _activeStreamSubscription?.cancel();
     _activeStreamSubscription = null;
     _updateDebounceTimer?.cancel();

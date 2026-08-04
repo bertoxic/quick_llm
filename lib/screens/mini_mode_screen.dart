@@ -4,7 +4,8 @@ import 'package:provider/provider.dart';
 import '../models/chat_message.dart';
 import '../models/conversation.dart';
 import '../provider/ChatProvider.dart';
-import '../services/ollama_service.dart';
+import '../models/ai_provider.dart';
+import '../services/ai_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/local_tools.dart';
 import '../widgets/typing_indicaator.dart';
@@ -31,7 +32,7 @@ class MiniModeScreen extends StatefulWidget {
 class _MiniModeScreenState extends State<MiniModeScreen> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  final OllamaService _ollamaService = OllamaService();
+  final AiService _aiService = AiService(AiProviderConfig.ollama());
   final FocusNode _inputFocusNode = FocusNode();
 
   late final MessageStreamHandler _messageStreamHandler;
@@ -39,7 +40,7 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
   @override
   void initState() {
     super.initState();
-    _messageStreamHandler = MessageStreamHandler(_ollamaService);
+    _messageStreamHandler = MessageStreamHandler(_aiService);
     _scrollToBottom();
   }
 
@@ -49,6 +50,7 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
     _scrollController.dispose();
     _inputFocusNode.dispose();
     _messageStreamHandler.dispose();
+    _aiService.dispose();
     super.dispose();
   }
 
@@ -92,6 +94,7 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
     if (!mounted) return;
 
     final provider = context.read<ChatProvider>();
+    _aiService.configure(provider.aiProvider);
     final existingUserMessage = useExistingLastUser &&
             provider.messages.isNotEmpty
         ? provider.messages.lastWhere(
@@ -160,7 +163,7 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
           ? text
           : '${conversationHistory.toString()}User: $text';
 
-      final stream = _ollamaService.generateResponse(
+      final stream = _aiService.generateResponse(
         model: provider.selectedModel,
         prompt: fullPrompt,
         systemPrompt: LocalToolService.applySystemInstructions(
@@ -231,7 +234,7 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
     final provider = context.read<ChatProvider>();
 
     _messageStreamHandler.cancelActiveStream();
-    _ollamaService.cancelGeneration();
+    _aiService.cancelGeneration();
     provider.stopGenerating();
     provider.setIsSending(false);
 

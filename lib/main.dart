@@ -3,8 +3,6 @@ import 'package:provider/provider.dart';
 import 'package:quick_llm/provider/ChatProvider.dart';
 import 'package:quick_llm/provider/SplitScreenManager_provider.dart';
 import 'package:quick_llm/screens/chatScreen.dart';
-import 'package:quick_llm/screens/connection_state_screen.dart';
-import 'package:quick_llm/services/ollama_service.dart';
 import 'package:quick_llm/theme/app_theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:window_manager/window_manager.dart';
@@ -45,39 +43,10 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
-  bool _ollamaConnected = false;
-  bool _isCheckingConnection = true;
-
   @override
   void initState() {
     super.initState();
     _loadTheme();
-    _checkOllamaOnStartup();
-  }
-
-  Future<void> _checkOllamaOnStartup() async {
-    setState(() => _isCheckingConnection = true);
-
-    // Give a brief moment for the UI to render
-    await Future.delayed(const Duration(milliseconds: 100));
-
-    try {
-      // Use OllamaService directly instead of through ChatProvider
-      final ollamaService = OllamaService();
-      final models = await ollamaService.fetchAvailableModels(
-        timeout: const Duration(seconds: 5),
-      );
-
-      setState(() {
-        _ollamaConnected = models.isNotEmpty;
-        _isCheckingConnection = false;
-      });
-    } catch (e) {
-      setState(() {
-        _ollamaConnected = false;
-        _isCheckingConnection = false;
-      });
-    }
   }
 
   Future<void> _loadTheme() async {
@@ -97,10 +66,6 @@ class _MyAppState extends State<MyApp> {
     await prefs.setBool('darkMode', isDarkMode);
   }
 
-  void _onOllamaConnectionSuccess() {
-    setState(() => _ollamaConnected = true);
-  }
-
   @override
   Widget build(BuildContext context) {
     return Consumer<ChatProvider>(
@@ -111,24 +76,10 @@ class _MyAppState extends State<MyApp> {
           theme: AppTheme.lightTheme,
           darkTheme: AppTheme.darkTheme,
           themeMode: chatProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
-          home: _isCheckingConnection
-              ? const Scaffold(
-                  body: Center(
-                    child: SizedBox(
-                      width: 34,
-                      height: 34,
-                      child: CircularProgressIndicator(strokeWidth: 3),
-                    ),
-                  ),
-                )
-              : _ollamaConnected
-                  ? ChatScreen(
-                      toggleTheme: toggleTheme,
-                      isDarkMode: chatProvider.isDarkMode,
-                    )
-                  : OllamaConnectionScreen(
-                      onConnectionSuccess: _onOllamaConnectionSuccess,
-                    ),
+          home: ChatScreen(
+            toggleTheme: toggleTheme,
+            isDarkMode: chatProvider.isDarkMode,
+          ),
         );
       },
     );

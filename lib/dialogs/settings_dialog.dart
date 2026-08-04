@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../models/ai_provider.dart';
 import '../theme/app_theme.dart';
 import '../utils/local_tools.dart';
 
@@ -11,12 +12,14 @@ class SettingsDialog extends StatefulWidget {
   final int maxTokens;
   final int numCtx;
   final bool isDarkMode;
+  final AiProviderConfig aiProvider;
   final Function(bool) onUseSystemPromptChanged;
   final Function(bool) onEnableToolCallingChanged;
   final Function(double) onTemperatureChanged;
   final Function(int) onMaxTokensChanged;
   final Function(int) onNumCtxChanged;
   final VoidCallback onSave;
+  final VoidCallback onProviderTap;
 
   const SettingsDialog({
     super.key,
@@ -27,12 +30,14 @@ class SettingsDialog extends StatefulWidget {
     required this.maxTokens,
     required this.numCtx,
     required this.isDarkMode,
+    required this.aiProvider,
     required this.onUseSystemPromptChanged,
     required this.onEnableToolCallingChanged,
     required this.onTemperatureChanged,
     required this.onMaxTokensChanged,
     required this.onNumCtxChanged,
     required this.onSave,
+    required this.onProviderTap,
   });
 
   @override
@@ -87,6 +92,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      _buildProviderConnection(),
+                      const SizedBox(height: 14),
                       _buildSystemPrompt(),
                       const SizedBox(height: 14),
                       _buildToolCalling(),
@@ -155,6 +162,40 @@ class _SettingsDialogState extends State<SettingsDialog> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildProviderConnection() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final provider = widget.aiProvider;
+    final isOllama = provider.kind == AiProviderKind.ollama;
+    return _SettingsCard(
+      icon: Icons.hub_rounded,
+      title: 'AI Connection',
+      value: provider.displayName,
+      accent: AppColors.teal,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            isOllama
+                ? 'Ollama at ${provider.normalizedEndpoint}'
+                : 'OpenAI-compatible API at ${provider.normalizedEndpoint}',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: colorScheme.onSurface.withValues(alpha: 0.64),
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: widget.onProviderTap,
+            icon: const Icon(Icons.settings_input_component_rounded, size: 17),
+            label: const Text('Change connection'),
+          ),
+        ],
       ),
     );
   }

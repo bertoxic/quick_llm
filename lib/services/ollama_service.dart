@@ -7,8 +7,11 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:syncfusion_flutter_pdf/pdf.dart';
 
+import '../utils/text_tool_call_parser.dart';
+
 enum OllamaStreamEventType {
   content,
+  contentReplacement,
   thinking,
   toolCall,
   toolResult,
@@ -30,6 +33,11 @@ class OllamaStreamEvent {
   const OllamaStreamEvent.content(String delta)
       : this._(type: OllamaStreamEventType.content, delta: delta);
 
+  /// Replaces previously streamed content after a compatibility tool marker
+  /// has been removed from the visible assistant response.
+  const OllamaStreamEvent.contentReplacement(String content)
+      : this._(type: OllamaStreamEventType.contentReplacement, delta: content);
+
   const OllamaStreamEvent.thinking(String delta)
       : this._(type: OllamaStreamEventType.thinking, delta: delta);
 
@@ -46,6 +54,8 @@ class OllamaStreamEvent {
       : this._(type: OllamaStreamEventType.error, delta: message, raw: raw);
 
   bool get isContent => type == OllamaStreamEventType.content;
+  bool get isContentReplacement =>
+      type == OllamaStreamEventType.contentReplacement;
   bool get isThinking => type == OllamaStreamEventType.thinking;
   bool get isToolCall => type == OllamaStreamEventType.toolCall;
   bool get isToolResult => type == OllamaStreamEventType.toolResult;
@@ -58,7 +68,10 @@ typedef OllamaToolExecutor = Future<List<Map<String, dynamic>>> Function(
 );
 
 class OllamaService {
-  static const String _baseUrl = 'http://localhost:11434';
+  OllamaService({String baseUrl = 'http://localhost:11434'})
+      : _baseUrl = baseUrl.trim().replaceFirst(RegExp(r'/+$'), '');
+
+  final String _baseUrl;
 
   http.Client? _activeClient;
   bool _isGenerating = false;
@@ -308,6 +321,28 @@ class OllamaService {
 
         if (!_isGenerating || generationId != _generationId) {
           return;
+        }
+
+        if (turnToolCalls.isEmpty && toolSchemas.isNotEmpty) {
+          final textToolCall = TextToolCallParser.extract(
+            content: turnContent.toString(),
+            toolSchemas: toolSchemas,
+            iteration: iteration,
+          );
+          if (textToolCall.hasToolCalls) {
+            turnToolCalls.addAll(textToolCall.toolCalls);
+            turnContent
+              ..clear()
+              ..write(textToolCall.cleanedContent);
+            yield OllamaStreamEvent.contentReplacement(
+              textToolCall.cleanedContent,
+            );
+            yield OllamaStreamEvent.toolCall({
+              'iteration': iteration,
+              'tool_calls': textToolCall.toolCalls,
+              'protocol': 'text_tool_code_compatibility',
+            });
+          }
         }
 
         if (turnThinking.isNotEmpty ||

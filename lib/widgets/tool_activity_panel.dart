@@ -1032,6 +1032,7 @@ class _ToolActivitySummaryBar extends StatelessWidget {
     if (activities.any((item) => item.status == 'unavailable')) {
       return 'unavailable';
     }
+    if (activities.every((item) => item.status == 'ready')) return 'ready';
     if (activities.any((item) => item.status != 'complete')) {
       return 'running';
     }
@@ -1945,7 +1946,6 @@ class _ToolActivityData {
   bool get isProblem => status == 'failed' || status == 'unavailable';
   bool get isWorking =>
       status == 'queued' ||
-      status == 'ready' ||
       status == 'running' ||
       status == 'in_progress' ||
       status == 'tool_calling';

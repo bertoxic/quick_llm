@@ -32,6 +32,8 @@ You are an intelligent local AI agent with access to a powerful native tool suit
 
 Do not guess when a tool can provide a better answer. Do not fake tool results. If a tool is needed, call the native tool, wait for the result, then answer normally.
 
+When native tool schemas are attached, invoke the provider's structured function-call mechanism. Never print or explain a pseudo-call such as `tool_code web_search(...)`, a JSON call, or a tool plan as if it had already run. A tool has only run after its result is returned to you.
+
 You may use multiple tools in one turn. For complex requests, call `tool_router` first, call `multi_step_planner` when the work needs ordered steps, then call each needed tool in sequence. After tool results return, continue with the next useful tool instead of stopping early.
 
 Before calling any tool, silently check: intent, best tool sequence, exact parameters, whether one result should feed another tool, and how the output will be validated. Never call a tool with vague placeholder parameters.
@@ -40,6 +42,7 @@ Use the tools like this:
 
 1. Use `calculator` for arithmetic, financial estimates, percentages, totals, comparisons, and any calculation that should not be guessed.
 2. Use `web_search` for live/current information, prices, news, recent facts, API changes, policies, documentation updates, market research, product research, or anything likely to have changed. Search with specific queries; compare returned sources instead of relying on one snippet.
+3. Use `date_time` whenever I ask for today's date, current time, day of the week, local timezone, or date arithmetic. Never infer the current date from training data.
 3. Use `web_scraper_reader`, `webpage_reader`, or URL-reading tools when I provide a specific link and ask you to read, summarize, extract, compare, or analyze its content.
 4. Use `note_save` when I ask you to remember, store, save, or keep information.
 5. Use `note_get` when I ask about something previously saved, remembered, or noted.
@@ -108,6 +111,14 @@ Always prefer accuracy over speed. Use tools when they are useful, but do not ca
       summary: 'Create a JSON task plan and advance steps in order.',
       detail: 'Foundation for longer agentic tasks.',
       uiSurface: 'Plan timeline',
+    ),
+    LocalToolDefinition(
+      id: 'date_time',
+      title: 'Date & time',
+      summary: 'Read the device clock and perform simple date arithmetic.',
+      detail:
+          'Returns local date, weekday, time, UTC timestamp, and timezone offset.',
+      uiSurface: 'Inline result',
     ),
     LocalToolDefinition(
       id: 'tool_router',
@@ -243,6 +254,24 @@ Always prefer accuracy over speed. Use tools when they are useful, but do not ca
           'expression': {
             'type': 'string',
             'description': 'Arithmetic expression, e.g. "(12 + 5) * 3".',
+          },
+        },
+      ),
+      functionTool(
+        name: 'date_time',
+        description:
+            'Read the device clock for the current local date, time, weekday, timezone offset, or simple date arithmetic. Use this instead of guessing today\'s date.',
+        properties: {
+          'action': {
+            'type': 'string',
+            'enum': ['now', 'date', 'time', 'weekday', 'add_days'],
+            'description':
+                'Defaults to now, which returns all current clock fields.',
+          },
+          'days': {
+            'type': 'integer',
+            'description':
+                'Required only for add_days. Positive values move forward and negative values move backward.',
           },
         },
       ),
@@ -823,6 +852,9 @@ Always prefer accuracy over speed. Use tools when they are useful, but do not ca
           'input',
           'query',
         ]));
+      case 'date_time':
+      case 'calendar':
+        return _runDateTimeTool(arguments);
       case 'web_search':
         return _runWebSearch(_stringArg(arguments, const [
               'query',
@@ -972,6 +1004,102 @@ Always prefer accuracy over speed. Use tools when they are useful, but do not ca
         ),
       ],
     );
+  }
+
+  static _ToolExecution _runDateTimeTool(Map<String, dynamic> arguments) {
+    final action =
+        (_stringArg(arguments, const ['action', 'operation']) ?? 'now')
+            .trim()
+            .toLowerCase();
+    const supportedActions = {'now', 'date', 'time', 'weekday', 'add_days'};
+    if (!supportedActions.contains(action)) {
+      return _ToolExecution.singleFailure(
+        id: 'date_time',
+        title: 'Date & time',
+        uiSurface: 'Inline result',
+        summary: 'Date/time request did not run.',
+        error: 'Unsupported action: $action',
+        result: 'date_time failed: use now, date, time, weekday, or add_days.',
+        status: LocalToolStatus.unavailable,
+      );
+    }
+
+    final localNow = DateTime.now();
+    final target = action == 'add_days'
+        ? localNow.add(Duration(
+            days: _intArg(arguments, const ['days', 'offset_days']) ?? 0))
+        : localNow;
+    final date = _formatCalendarDate(target);
+    final weekday = _weekdayName(target.weekday);
+    final time = _formatClockTime(target);
+    final timezone =
+        '${target.timeZoneName} (${_formatUtcOffset(target.timeZoneOffset)})';
+    final output = switch (action) {
+      'date' => 'local_date=$date\nweekday=$weekday\ntimezone=$timezone',
+      'time' =>
+        'local_time=$time\ntimezone=$timezone\nutc=${localNow.toUtc().toIso8601String()}',
+      'weekday' => 'weekday=$weekday\nlocal_date=$date\ntimezone=$timezone',
+      'add_days' =>
+        'base_local_date=${_formatCalendarDate(localNow)}\ndays=${_intArg(arguments, const [
+                  'days',
+                  'offset_days'
+                ]) ?? 0}\ntarget_local_date=$date\nweekday=$weekday\ntimezone=$timezone',
+      _ =>
+        'local_date=$date\nweekday=$weekday\nlocal_time=$time\ntimezone=$timezone\nutc=${localNow.toUtc().toIso8601String()}',
+    };
+
+    return _ToolExecution(
+      results: ['date_time($action)\n$output'],
+      activities: [
+        LocalToolActivity.complete(
+          id: 'date_time',
+          title: 'Date & time',
+          summary: 'Read the device clock locally.',
+          uiSurface: 'Inline result',
+          steps: [
+            'Read the local device clock',
+            if (action == 'add_days') 'Applied requested day offset',
+            'Returned date/time with timezone offset',
+          ],
+          output: action == 'time' ? time : date,
+        ),
+      ],
+    );
+  }
+
+  static String _formatCalendarDate(DateTime value) {
+    final month = value.month.toString().padLeft(2, '0');
+    final day = value.day.toString().padLeft(2, '0');
+    return '${value.year}-$month-$day';
+  }
+
+  static String _formatClockTime(DateTime value) {
+    final hour = value.hour.toString().padLeft(2, '0');
+    final minute = value.minute.toString().padLeft(2, '0');
+    final second = value.second.toString().padLeft(2, '0');
+    return '$hour:$minute:$second';
+  }
+
+  static String _formatUtcOffset(Duration offset) {
+    final totalMinutes = offset.inMinutes;
+    final sign = totalMinutes < 0 ? '-' : '+';
+    final absoluteMinutes = totalMinutes.abs();
+    final hours = (absoluteMinutes ~/ 60).toString().padLeft(2, '0');
+    final minutes = (absoluteMinutes % 60).toString().padLeft(2, '0');
+    return 'UTC$sign$hours:$minutes';
+  }
+
+  static String _weekdayName(int weekday) {
+    const names = [
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday',
+    ];
+    return names[weekday - 1];
   }
 
   static Future<_ToolExecution> _readUrlTool(String? urlText) async {
@@ -2284,7 +2412,15 @@ Always prefer accuracy over speed. Use tools when they are useful, but do not ca
       activities.addAll(execution.activities);
     }
 
-    if (shouldRunLiveWebSearch(prompt)) {
+    if (_looksLikeDateTimeRequest(prompt)) {
+      final dayOffset = _dateOffsetForPrompt(prompt);
+      final execution = _runDateTimeTool({
+        'action': _dateTimeActionForPrompt(prompt),
+        if (dayOffset != null) 'days': dayOffset,
+      });
+      results.addAll(execution.results);
+      activities.addAll(execution.activities);
+    } else if (shouldRunLiveWebSearch(prompt)) {
       final execution = await _runWebSearch(prompt);
       results.addAll(execution.results);
       activities.addAll(execution.activities);
@@ -2984,6 +3120,9 @@ Always prefer accuracy over speed. Use tools when they are useful, but do not ca
         RegExp(r'\b(read|summarize|analyze|scrape|fetch|article|page|url|link)\b')
             .hasMatch(normalized)) {
       add('webpage_reader', 'A specific URL should be read directly.', 0.95);
+    }
+    if (_looksLikeDateTimeRequest(request)) {
+      add('date_time', 'The request needs the local device clock.', 0.98);
     }
     if (shouldRunLiveWebSearch(request) && _urlsForPrompt(request).isEmpty) {
       add('web_search', 'The request needs current or live web information.',
@@ -5362,9 +5501,48 @@ Always prefer accuracy over speed. Use tools when they are useful, but do not ca
 
   static bool shouldRunLiveWebSearch(String prompt) {
     final normalized = prompt.toLowerCase();
+    if (_looksLikeDateTimeRequest(prompt)) return false;
     return _cryptoSymbolsForPrompt(prompt).isNotEmpty ||
         RegExp(r'\b(web search|search web|google|duckduckgo|brave|serper|latest|recent|newest|current|currently|today|tonight|yesterday|tomorrow|news|look up|lookup|online|price now|right now|up[- ]to[- ]date|as of|this week|this month|this year|breaking|trending|announced?|announcements?|released?|release date|launch(?:ed|es|ing)?|product updates?|new model|new product)\b')
             .hasMatch(normalized);
+  }
+
+  static bool _looksLikeDateTimeRequest(String prompt) {
+    final normalized = prompt.toLowerCase();
+    return RegExp(
+      r"\b(today'?s date|date today|current date|what(?:'s| is) (?:the )?(?:date|time|day)|what day is it|day of (?:the )?week|current time|time is it|local time|time now|time zone|timezone|calendar date|date in [-+]?\d+ days|\d+ days (?:from|after|before) (?:today|now))\b",
+    ).hasMatch(normalized);
+  }
+
+  static String _dateTimeActionForPrompt(String prompt) {
+    final normalized = prompt.toLowerCase();
+    if (_dateOffsetForPrompt(prompt) != null) return 'add_days';
+    if (RegExp(r'\b(time|timezone|time zone)\b').hasMatch(normalized)) {
+      return 'time';
+    }
+    if (RegExp(r'\b(weekday|what day|day of (?:the )?week)\b')
+        .hasMatch(normalized)) {
+      return 'weekday';
+    }
+    if (RegExp(r'\b(date|today)\b').hasMatch(normalized)) return 'date';
+    return 'now';
+  }
+
+  static int? _dateOffsetForPrompt(String prompt) {
+    final inMatch =
+        RegExp(r'\b(?:date in |in )([-+]?\d+) days?\b', caseSensitive: false)
+            .firstMatch(prompt);
+    if (inMatch != null) return int.tryParse(inMatch.group(1)!);
+
+    final beforeMatch =
+        RegExp(r'\b(\d+) days? before (?:today|now)\b', caseSensitive: false)
+            .firstMatch(prompt);
+    if (beforeMatch != null) return -int.parse(beforeMatch.group(1)!);
+
+    final afterMatch = RegExp(r'\b(\d+) days? (?:from|after) (?:today|now)\b',
+            caseSensitive: false)
+        .firstMatch(prompt);
+    return afterMatch == null ? null : int.parse(afterMatch.group(1)!);
   }
 
   static bool _looksLikeWebReaderRequest(String prompt) {
