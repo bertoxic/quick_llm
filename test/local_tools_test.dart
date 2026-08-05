@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_llm/utils/local_tools.dart';
+import 'package:quick_llm/utils/text_tool_call_parser.dart';
 
 void main() {
   group('LocalToolService.shouldRunLiveWebSearch', () {
@@ -333,6 +334,65 @@ void main() {
         'svg',
       );
       expect(batch.context.activities.single.status, LocalToolStatus.complete);
+    });
+
+    test('recovers simulation calls that use compatibility input fields',
+        () async {
+      final batch = await LocalToolService.executeOllamaToolCalls([
+        {
+          'function': {
+            'name': 'simulation_tool',
+            'arguments': {
+              'input': 'Forecast 120 signups growing 10% for two months.',
+            },
+          },
+        },
+      ]);
+
+      expect(batch.toolMessages.single['content'],
+          contains('simulation_tool("Forecast 120 signups'));
+      expect(batch.context.activities.single.status, LocalToolStatus.complete);
+    });
+
+    test('parses compatibility simulation calls into a scenario argument', () {
+      final extraction = TextToolCallParser.extract(
+        content: 'tool_code simulation_tool("Forecast next quarter revenue")',
+        toolSchemas: [
+          {
+            'function': {'name': 'simulation_tool'},
+          },
+        ],
+        iteration: 0,
+      );
+
+      expect(extraction.hasToolCalls, isTrue);
+      expect(
+        extraction.toolCalls.single['function']['arguments']['scenario'],
+        'Forecast next quarter revenue',
+      );
+    });
+
+    test('recovers empty simulation calls from the active user request',
+        () async {
+      final batch = await LocalToolService.executeOllamaToolCalls(
+        [
+          {
+            'function': {
+              'name': 'simulation_tool',
+              'arguments': const <String, dynamic>{},
+            },
+          },
+        ],
+        fallbackPrompt:
+            'Project 200 users with 5% monthly growth for 3 months.',
+      );
+
+      expect(batch.toolMessages.single['content'],
+          contains('simulation_tool("Project 200 users'));
+      final activity = batch.context.activities.single;
+      expect(activity.status, LocalToolStatus.complete);
+      expect(
+          activity.steps, contains('Recovered scenario from the user request'));
     });
 
     test('generates chart and diagram outputs', () async {

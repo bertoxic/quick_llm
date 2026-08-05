@@ -546,8 +546,10 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
             : null,
         toolExecutor: provider.enableToolCalling
             ? (toolCalls) async {
-                final batch =
-                    await LocalToolService.executeOllamaToolCalls(toolCalls);
+                final batch = await LocalToolService.executeOllamaToolCalls(
+                  toolCalls,
+                  fallbackPrompt: activeUserMessage.text,
+                );
                 toolContext = toolContext.merge(batch.context);
                 requestDetails['tools'] = toolContext.toDetails();
                 return batch.toolMessages;
@@ -1144,7 +1146,10 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
     }
   }
 
-  Future<void> _downloadMessagePdf(String text, String messageKey) async {
+  Future<void> _downloadMessagePdf(
+    ChatMessage message,
+    String messageKey,
+  ) async {
     if (_pdfExportingMessageKey != null) {
       _showSnackBar('A PDF is already being created.');
       return;
@@ -1158,7 +1163,8 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
     await WidgetsBinding.instance.endOfFrame;
     try {
       final pdfFile = await _markdownPdfService.download(
-        text,
+        message.text,
+        artifacts: _pdfVisualArtifacts(message),
         onStage: (stage) {
           if (!mounted || _pdfExportingMessageKey != messageKey) return;
           setState(() => _pdfExportStatus = stage);
@@ -1175,6 +1181,43 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
         });
       }
     }
+  }
+
+  List<MarkdownPdfArtifact> _pdfVisualArtifacts(ChatMessage message) {
+    final details = message.details;
+    if (details == null) return const <MarkdownPdfArtifact>[];
+
+    Map? tools = details['tools'] is Map ? details['tools'] as Map : null;
+    final request = details['request'];
+    if (tools == null && request is Map && request['tools'] is Map) {
+      tools = request['tools'] as Map;
+    }
+    final activities = tools?['activity'];
+    if (activities is! List) return const <MarkdownPdfArtifact>[];
+
+    final artifacts = <MarkdownPdfArtifact>[];
+    for (final activity in activities) {
+      if (activity is! Map || activity['artifact'] is! Map) continue;
+      final artifact = activity['artifact'] as Map;
+      final type = '${artifact['type'] ?? ''}'.trim().toLowerCase();
+      final content = '${artifact['content'] ?? ''}'.trim();
+      if ((type != 'svg' && type != 'mermaid') || content.isEmpty) continue;
+      if (artifacts.any(
+        (existing) =>
+            existing.type == type && existing.content.trim() == content,
+      )) {
+        continue;
+      }
+      artifacts.add(
+        MarkdownPdfArtifact(
+          type: type,
+          content: content,
+          label:
+              '${artifact['label'] ?? activity['title'] ?? 'Generated diagram'}',
+        ),
+      );
+    }
+    return artifacts;
   }
 
   void _beginAudioProcessing(String messageKey) {
@@ -1758,10 +1801,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
                                   audioMessageKey,
                                 );
                               } else {
-                                _downloadMessagePdf(
-                                  message.text,
-                                  audioMessageKey,
-                                );
+                                _downloadMessagePdf(message, audioMessageKey);
                               }
                             }
                           : null,

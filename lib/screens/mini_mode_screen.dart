@@ -178,8 +178,10 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
             : null,
         toolExecutor: provider.enableToolCalling
             ? (toolCalls) async {
-                final batch =
-                    await LocalToolService.executeOllamaToolCalls(toolCalls);
+                final batch = await LocalToolService.executeOllamaToolCalls(
+                  toolCalls,
+                  fallbackPrompt: text,
+                );
                 return batch.toolMessages;
               }
             : null,

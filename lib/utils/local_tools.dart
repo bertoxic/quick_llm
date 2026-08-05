@@ -51,7 +51,7 @@ Use the tools like this:
 8. Use `multi_step_planner` when I ask for a plan, roadmap, task breakdown, strategy, development steps, learning path, launch plan, or project execution guide.
 9. Use `tool_router` when my request is complex and you need to decide the best tool sequence before executing.
 10. Use `mind_map_generator` or `mind_map_tool` when I ask for a mind map, concept map, idea map, brainstorm map, or structured visual thinking. Ask for at least three levels of structure and concrete branch labels when the topic is non-trivial.
-11. Use `simulation_tool` for what-if analysis, projections, forecasting, scenario planning, sensitivity checks, cost modeling, growth modeling, risk analysis, or business estimates. Provide numeric assumptions, distributions or volatility, a horizon, target thresholds when relevant, and at least 10000 iterations for meaningful Monte Carlo percentiles.
+11. Use `simulation_tool` for what-if analysis, projections, forecasting, scenario planning, sensitivity checks, cost modeling, growth modeling, risk analysis, or business estimates. Always provide the required `scenario` field with a concise restatement of the user's question; never call it with an empty object. Provide numeric assumptions, distributions or volatility, a horizon, target thresholds when relevant, and at least 10000 iterations for meaningful Monte Carlo percentiles.
 12. Use `local_document_search` when I ask you to search local documents using a query and optional path.
 13. Use `code_executor` only when I explicitly ask you to run Python or JavaScript code.
 14. Use `document_generator` when I ask you to generate markdown, HTML, text documents, reports, templates, documentation, proposals, or formatted long-form output. Use `pdf_document_generator` or `document_generator` with `format: "pdf"` whenever I ask for PDF, save as PDF, export as PDF, or provide an output path ending in `.pdf`. Reports should include an executive summary, structured sections, conclusions/recommendations, and tables for numeric claims.
@@ -496,7 +496,8 @@ Always prefer accuracy over speed. Use tools when they are useful, but do not ca
         properties: {
           'scenario': {
             'type': 'string',
-            'description': 'Scenario or what-if question to analyze.',
+            'description':
+                'Required scenario or what-if question to analyze. Restate the user request here; never call simulation_tool with an empty object.',
           },
           'variables': {
             'type': 'object',
@@ -833,8 +834,9 @@ Always prefer accuracy over speed. Use tools when they are useful, but do not ca
   }
 
   static Future<LocalToolCallBatch> executeOllamaToolCalls(
-    List<Map<String, dynamic>> toolCalls,
-  ) async {
+    List<Map<String, dynamic>> toolCalls, {
+    String? fallbackPrompt,
+  }) async {
     final toolMessages = <Map<String, dynamic>>[];
     final results = <String>[];
     final activities = <LocalToolActivity>[];
@@ -842,7 +844,11 @@ Always prefer accuracy over speed. Use tools when they are useful, but do not ca
     for (var index = 0; index < toolCalls.length; index++) {
       final parsed = _ParsedToolCall.fromOllama(toolCalls[index], index);
       final toolName = parsed.name.trim().toLowerCase();
-      final execution = await _executeNamedTool(toolName, parsed.arguments);
+      final execution = await _executeNamedTool(
+        toolName,
+        parsed.arguments,
+        fallbackPrompt: fallbackPrompt,
+      );
       final content = execution.results.isEmpty
           ? '$toolName completed with no output.'
           : execution.results.join('\n\n');
@@ -864,8 +870,9 @@ Always prefer accuracy over speed. Use tools when they are useful, but do not ca
 
   static Future<_ToolExecution> _executeNamedTool(
     String name,
-    Map<String, dynamic> arguments,
-  ) async {
+    Map<String, dynamic> arguments, {
+    String? fallbackPrompt,
+  }) async {
     switch (name) {
       case 'calculator':
         return _runCalculatorTool(_stringArg(arguments, const [
@@ -945,7 +952,10 @@ Always prefer accuracy over speed. Use tools when they are useful, but do not ca
         );
       case 'simulation_tool':
       case 'scenario_simulator':
-        return _runSimulationTool(arguments);
+        return _runSimulationTool(
+          arguments,
+          fallbackScenario: fallbackPrompt,
+        );
       case 'local_document_search':
         return _runLocalDocumentSearchTool(
           query: _stringArg(arguments, const ['query', 'q', 'prompt']),
@@ -1552,10 +1562,28 @@ Always prefer accuracy over speed. Use tools when they are useful, but do not ca
     );
   }
 
-  static _ToolExecution _runSimulationTool(Map<String, dynamic> arguments) {
-    final scenario =
-        _stringArg(arguments, const ['scenario', 'question', 'prompt', 'task'])
-            ?.trim();
+  static _ToolExecution _runSimulationTool(
+    Map<String, dynamic> arguments, {
+    String? fallbackScenario,
+  }) {
+    final suppliedScenario = _stringArg(arguments, const [
+      'scenario',
+      'question',
+      'prompt',
+      'task',
+      'input',
+      'query',
+      'objective',
+      'description',
+      'content',
+    ])?.trim();
+    final recoveredScenario =
+        suppliedScenario == null || suppliedScenario.isEmpty
+            ? fallbackScenario?.trim()
+            : null;
+    final scenario = (suppliedScenario == null || suppliedScenario.isEmpty)
+        ? recoveredScenario
+        : suppliedScenario;
     if (scenario == null || scenario.isEmpty) {
       return _ToolExecution.singleFailure(
         id: 'simulation_tool',
@@ -1685,6 +1713,8 @@ Always prefer accuracy over speed. Use tools when they are useful, but do not ca
               'Ran deterministic scenarios, Monte Carlo, and sensitivity analysis.',
           uiSurface: 'Scenario lab',
           steps: [
+            if (recoveredScenario != null && recoveredScenario.isNotEmpty)
+              'Recovered scenario from the user request',
             'Parsed scenario inputs',
             'Projected $horizon period(s) across deterministic bands',
             'Ran $iterations seeded Monte Carlo trial(s)',

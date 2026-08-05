@@ -177,6 +177,9 @@ class TextToolCallParser {
       case 'mind_map_generator':
       case 'mind_map_tool':
         return 'topic';
+      case 'simulation_tool':
+      case 'scenario_simulator':
+        return 'scenario';
       case 'workflow_automation':
         return 'objective';
       default:

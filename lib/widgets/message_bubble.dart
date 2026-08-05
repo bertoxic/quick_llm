@@ -579,7 +579,9 @@ class MarkdownContentWidget extends StatelessWidget {
       blockquoteDecoration: BoxDecoration(
         color: AppColors.teal.withValues(alpha: 0.09),
         borderRadius: BorderRadius.circular(6),
-        border: Border(left: BorderSide(color: AppColors.teal, width: 3)),
+        border: const Border(
+          left: BorderSide(color: AppColors.teal, width: 3),
+        ),
       ),
     );
   }
