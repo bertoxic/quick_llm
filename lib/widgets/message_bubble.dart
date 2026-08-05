@@ -5,23 +5,40 @@ import 'dart:math' as math;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_svg/flutter_svg.dart';
-import 'package:gpt_markdown/gpt_markdown.dart';
+import 'package:markdown/markdown.dart' as markdown;
 import 'package:syntax_highlight/syntax_highlight.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../models/chat_message.dart';
 import '../theme/app_theme.dart';
 import '../utils/helpers.dart';
+import '../utils/search_highlight.dart';
 
 part 'tool_activity_panel.dart';
+
+enum MessageDownloadFormat { audio, pdf }
 
 class MessageBubble extends StatefulWidget {
   final ChatMessage message;
   final bool isDarkMode;
   final ValueChanged<String>? onEdit;
   final VoidCallback? onRegenerate;
+  final VoidCallback? onSpeak;
+  final ValueChanged<MessageDownloadFormat>? onDownload;
+  final bool isAudioProcessing;
+  final String? audioStatus;
+  final bool isPdfExporting;
+  final String? pdfStatus;
+  final bool isActiveAudio;
+  final bool isActiveAudioPlaying;
+  final Duration audioPosition;
+  final Duration? audioDuration;
+  final ValueChanged<Duration>? onSeekAudio;
   final bool useFullWidth;
+  final String searchQuery;
+  final bool isActiveSearchMatch;
 
   const MessageBubble({
     super.key,
@@ -29,7 +46,20 @@ class MessageBubble extends StatefulWidget {
     required this.isDarkMode,
     this.onEdit,
     this.onRegenerate,
+    this.onSpeak,
+    this.onDownload,
+    this.isAudioProcessing = false,
+    this.audioStatus,
+    this.isPdfExporting = false,
+    this.pdfStatus,
+    this.isActiveAudio = false,
+    this.isActiveAudioPlaying = false,
+    this.audioPosition = Duration.zero,
+    this.audioDuration,
+    this.onSeekAudio,
     this.useFullWidth = false,
+    this.searchQuery = '',
+    this.isActiveSearchMatch = false,
   });
 
   @override
@@ -143,11 +173,20 @@ class _MessageBubbleState extends State<MessageBubble> {
   }
 
   Widget _buildUserTextBubble(BuildContext context) {
+    final hasSearchMatch = _hasSearchMatch(widget.message.text);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
       decoration: BoxDecoration(
         color: AppColors.orange,
         borderRadius: BorderRadius.circular(8),
+        border: hasSearchMatch
+            ? Border.all(
+                color: widget.isActiveSearchMatch
+                    ? Colors.white
+                    : Colors.white.withValues(alpha: 0.65),
+                width: widget.isActiveSearchMatch ? 2 : 1,
+              )
+            : null,
       ),
       child: _isEditing
           ? Column(
@@ -197,8 +236,15 @@ class _MessageBubbleState extends State<MessageBubble> {
               text: widget.message.text,
               isUser: true,
               isDarkMode: widget.isDarkMode,
+              searchQuery: widget.searchQuery,
+              isActiveSearchMatch: widget.isActiveSearchMatch,
             ),
     );
+  }
+
+  bool _hasSearchMatch(String text) {
+    final query = widget.searchQuery.trim();
+    return query.isNotEmpty && text.toLowerCase().contains(query.toLowerCase());
   }
 
   void _startEditing() {
@@ -276,7 +322,10 @@ class _MessageBubbleState extends State<MessageBubble> {
               thinkingText: widget.message.thinkingText!,
               isThinking: widget.message.isThinking,
               isDarkMode: widget.isDarkMode,
-              showThinking: _showThinking,
+              searchQuery: widget.searchQuery,
+              isActiveSearchMatch: widget.isActiveSearchMatch,
+              showThinking: _showThinking ||
+                  _hasSearchMatch(widget.message.thinkingText!),
               onToggle: () => setState(() => _showThinking = !_showThinking),
             ),
           if (widget.message.text.isNotEmpty)
@@ -284,6 +333,8 @@ class _MessageBubbleState extends State<MessageBubble> {
               text: widget.message.text,
               isUser: false,
               isDarkMode: widget.isDarkMode,
+              searchQuery: widget.searchQuery,
+              isActiveSearchMatch: widget.isActiveSearchMatch,
             ),
           const SizedBox(height: 8),
           LayoutBuilder(
@@ -297,6 +348,14 @@ class _MessageBubbleState extends State<MessageBubble> {
               final actions = MessageActionButtons(
                 text: widget.message.text,
                 onRegenerate: widget.onRegenerate,
+                onSpeak: widget.onSpeak,
+                onDownload: widget.onDownload,
+                isAudioProcessing: widget.isAudioProcessing,
+                audioStatus: widget.audioStatus,
+                isPdfExporting: widget.isPdfExporting,
+                pdfStatus: widget.pdfStatus,
+                isActiveAudio: widget.isActiveAudio,
+                isActiveAudioPlaying: widget.isActiveAudioPlaying,
               );
 
               if (constraints.maxWidth < 240) {
@@ -318,6 +377,15 @@ class _MessageBubbleState extends State<MessageBubble> {
               );
             },
           ),
+          if (widget.isActiveAudio)
+            Padding(
+              padding: const EdgeInsets.only(top: 5),
+              child: _AudioSeekBar(
+                position: widget.audioPosition,
+                duration: widget.audioDuration,
+                onSeek: widget.onSeekAudio,
+              ),
+            ),
           MessageDetailsDisclosure(
             message: widget.message,
             isExpanded: _showDetails,
@@ -327,6 +395,29 @@ class _MessageBubbleState extends State<MessageBubble> {
       ),
     );
 
+    final hasSearchMatch = _hasSearchMatch(widget.message.text) ||
+        _hasSearchMatch(widget.message.thinkingText ?? '');
+    final framedMessageContent = hasSearchMatch
+        ? AnimatedContainer(
+            duration: const Duration(milliseconds: 140),
+            curve: Curves.easeOut,
+            padding: const EdgeInsets.all(6),
+            decoration: BoxDecoration(
+              color: widget.isActiveSearchMatch
+                  ? AppColors.teal.withValues(alpha: 0.10)
+                  : AppColors.teal.withValues(alpha: 0.045),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: AppColors.teal.withValues(
+                  alpha: widget.isActiveSearchMatch ? 0.95 : 0.45,
+                ),
+                width: widget.isActiveSearchMatch ? 1.5 : 1,
+              ),
+            ),
+            child: messageContent,
+          )
+        : messageContent;
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12),
       child: Center(
@@ -334,7 +425,7 @@ class _MessageBubbleState extends State<MessageBubble> {
           constraints: BoxConstraints(maxWidth: maxWidth),
           child: LayoutBuilder(
             builder: (context, constraints) {
-              if (toolActivities.isEmpty) return messageContent;
+              if (toolActivities.isEmpty) return framedMessageContent;
 
               if (constraints.maxWidth >= 640) {
                 _scheduleToolActivitySideMeasurement();
@@ -351,7 +442,7 @@ class _MessageBubbleState extends State<MessageBubble> {
                       ),
                     ),
                     const SizedBox(width: 14),
-                    Expanded(child: messageContent),
+                    Expanded(child: framedMessageContent),
                   ],
                 );
               }
@@ -359,7 +450,7 @@ class _MessageBubbleState extends State<MessageBubble> {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  messageContent,
+                  framedMessageContent,
                   const SizedBox(height: 10),
                   _ToolActivitySummaryBar(
                     activities: toolActivities,
@@ -380,6 +471,8 @@ class MarkdownContentWidget extends StatelessWidget {
   final bool isUser;
   final bool isDarkMode;
   final bool isSelectable;
+  final String searchQuery;
+  final bool isActiveSearchMatch;
 
   const MarkdownContentWidget({
     super.key,
@@ -387,6 +480,8 @@ class MarkdownContentWidget extends StatelessWidget {
     required this.isUser,
     required this.isDarkMode,
     this.isSelectable = true,
+    this.searchQuery = '',
+    this.isActiveSearchMatch = false,
   });
 
   @override
@@ -398,28 +493,113 @@ class MarkdownContentWidget extends StatelessWidget {
         isDark ? theme.colorScheme.surfaceContainerHigh : Colors.white;
     final lineColor = theme.colorScheme.outlineVariant;
 
-    final markdown = GptMarkdown(
-      text,
-      style: TextStyle(fontSize: 13, height: 1.45, color: textColor),
-      followLinkColor: true,
-      onLinkTap: (url, _) => _handleLinkTap(url, context),
-      codeBuilder: (context, language, code, closed) => CodeBlockWrapper(
-        code: code,
-        language: language,
-        isDarkMode: isDarkMode,
-        isSelectable: isSelectable,
-        child: _CodeBlockSurface(
-          code: code,
-          language: language,
-          blockSurface: blockSurface,
-          lineColor: lineColor,
-          isSelectable: isSelectable,
-        ),
+    final style = _markdownStyle(theme, textColor, blockSurface, lineColor);
+    final segments = _splitMarkdownVisualBlocks(text)
+        .map(
+          (segment) => segment.isVisual
+              ? segment
+              : _MarkdownVisualBlock.text(
+                  markSearchMatches(segment.source, searchQuery),
+                ),
+        )
+        .toList();
+
+    if (segments.length == 1 && !segments.single.isVisual) {
+      return _markdownBody(context, segments.single.source, style);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final segment in segments)
+          if (segment.isVisual)
+            CodeBlockWrapper(
+              code: segment.source,
+              language: segment.language,
+              isDarkMode: isDarkMode,
+              isSelectable: isSelectable,
+              child: _CodeBlockSurface(
+                code: segment.source,
+                language: segment.language ?? '',
+                blockSurface: blockSurface,
+                lineColor: lineColor,
+                isSelectable: isSelectable,
+              ),
+            )
+          else if (segment.source.trim().isNotEmpty)
+            _markdownBody(context, segment.source, style),
+      ],
+    );
+  }
+
+  MarkdownStyleSheet _markdownStyle(
+    ThemeData theme,
+    Color textColor,
+    Color blockSurface,
+    Color lineColor,
+  ) {
+    final textStyle = TextStyle(fontSize: 13, height: 1.45, color: textColor);
+    return MarkdownStyleSheet.fromTheme(theme).copyWith(
+      p: textStyle,
+      a: textStyle.copyWith(
+        color: AppColors.teal,
+        decoration: TextDecoration.underline,
       ),
-      imageBuilder: (context, url) => ClipRRect(
+      h1: textStyle.copyWith(
+        fontSize: 23,
+        height: 1.25,
+        fontWeight: FontWeight.w800,
+      ),
+      h2: textStyle.copyWith(
+        fontSize: 19,
+        height: 1.3,
+        fontWeight: FontWeight.w800,
+      ),
+      h3: textStyle.copyWith(
+        fontSize: 16,
+        height: 1.35,
+        fontWeight: FontWeight.w800,
+      ),
+      h4: textStyle.copyWith(fontSize: 14, fontWeight: FontWeight.w800),
+      h5: textStyle.copyWith(fontWeight: FontWeight.w800),
+      h6: textStyle.copyWith(fontWeight: FontWeight.w800),
+      code: textStyle.copyWith(
+        fontFamily: 'monospace',
+        fontSize: 12,
+        backgroundColor: blockSurface,
+      ),
+      blockSpacing: 9,
+      tableBorder: TableBorder.all(color: lineColor),
+      tableCellsPadding:
+          const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      tableHead: textStyle.copyWith(fontWeight: FontWeight.w800),
+      tableBody: textStyle,
+      blockquote: textStyle,
+      blockquotePadding: const EdgeInsets.all(10),
+      blockquoteDecoration: BoxDecoration(
+        color: AppColors.teal.withValues(alpha: 0.09),
+        borderRadius: BorderRadius.circular(6),
+        border: Border(left: BorderSide(color: AppColors.teal, width: 3)),
+      ),
+    );
+  }
+
+  Widget _markdownBody(
+    BuildContext context,
+    String source,
+    MarkdownStyleSheet style,
+  ) {
+    return MarkdownBody(
+      data: source,
+      selectable: isSelectable,
+      styleSheet: style,
+      onTapLink: (_, url, __) {
+        if (url != null) _handleLinkTap(url, context);
+      },
+      imageBuilder: (url, _, __) => ClipRRect(
         borderRadius: BorderRadius.circular(8),
         child: Image.network(
-          url,
+          url.toString(),
           errorBuilder: (context, error, stackTrace) => Container(
             height: 110,
             color: AppColors.softOrange,
@@ -432,9 +612,15 @@ class MarkdownContentWidget extends StatelessWidget {
           ),
         ),
       ),
+      inlineSyntaxes: [_SearchHighlightInlineSyntax()],
+      builders: {
+        _searchHighlightTag: _SearchHighlightMarkdownBuilder(
+          isUser: isUser,
+          isDarkMode: isDarkMode,
+          isActive: isActiveSearchMatch,
+        ),
+      },
     );
-
-    return markdown;
   }
 
   Future<void> _handleLinkTap(String url, BuildContext context) async {
@@ -457,6 +643,129 @@ class MarkdownContentWidget extends StatelessWidget {
   }
 }
 
+const _searchHighlightTag = 'quick-llm-search-highlight';
+
+class _SearchHighlightInlineSyntax extends markdown.InlineSyntax {
+  _SearchHighlightInlineSyntax()
+      : super(
+          '${RegExp.escape(searchHighlightOpenMarker)}([\\s\\S]*?)${RegExp.escape(searchHighlightCloseMarker)}',
+          startCharacter: searchHighlightOpenMarker.codeUnitAt(0),
+        );
+
+  @override
+  bool onMatch(markdown.InlineParser parser, Match match) {
+    parser.addNode(
+      markdown.Element(
+        _searchHighlightTag,
+        <markdown.Node>[markdown.Text(match.group(1) ?? '')],
+      ),
+    );
+    return true;
+  }
+}
+
+class _SearchHighlightMarkdownBuilder extends MarkdownElementBuilder {
+  final bool isUser;
+  final bool isDarkMode;
+  final bool isActive;
+
+  _SearchHighlightMarkdownBuilder({
+    required this.isUser,
+    required this.isDarkMode,
+    required this.isActive,
+  });
+
+  @override
+  Widget? visitElementAfter(
+    markdown.Element element,
+    TextStyle? preferredStyle,
+  ) {
+    final highlightColor = isUser
+        ? Colors.white.withValues(alpha: isActive ? 0.42 : 0.30)
+        : (isDarkMode
+            ? AppColors.teal.withValues(alpha: isActive ? 0.68 : 0.46)
+            : const Color(0xFFFFD166).withValues(
+                alpha: isActive ? 0.82 : 0.62,
+              ));
+
+    return Text.rich(
+      TextSpan(
+        text: element.textContent,
+        style: (preferredStyle ?? const TextStyle()).copyWith(
+          fontWeight: FontWeight.w800,
+          background: Paint()
+            ..color = highlightColor
+            ..strokeCap = StrokeCap.round
+            ..strokeJoin = StrokeJoin.round,
+        ),
+      ),
+    );
+  }
+}
+
+class _MarkdownVisualBlock {
+  final String source;
+  final String? language;
+  final bool isVisual;
+
+  const _MarkdownVisualBlock.text(this.source)
+      : language = null,
+        isVisual = false;
+
+  const _MarkdownVisualBlock.code(this.source, this.language) : isVisual = true;
+}
+
+List<_MarkdownVisualBlock> _splitMarkdownVisualBlocks(String source) {
+  final fencedCode = RegExp(
+    r'^```([^\r\n]*)\r?\n([\s\S]*?)^```[ \t]*$',
+    multiLine: true,
+  );
+  final rawSvg = RegExp(r'<svg\b[\s\S]*?</svg>', caseSensitive: false);
+  final blocks = <_MarkdownVisualBlock>[];
+  var cursor = 0;
+
+  while (cursor < source.length) {
+    final fence = _firstMatchAtOrAfter(fencedCode, source, cursor);
+    final svg = _firstMatchAtOrAfter(rawSvg, source, cursor);
+    final Match? next;
+    if (fence == null) {
+      next = svg;
+    } else if (svg == null) {
+      next = fence;
+    } else {
+      next = fence.start <= svg.start ? fence : svg;
+    }
+
+    if (next == null) {
+      blocks.add(_MarkdownVisualBlock.text(source.substring(cursor)));
+      break;
+    }
+    if (next.start > cursor) {
+      blocks
+          .add(_MarkdownVisualBlock.text(source.substring(cursor, next.start)));
+    }
+
+    if (identical(next, fence)) {
+      final language = fence!.group(1)?.trim() ?? '';
+      blocks.add(_MarkdownVisualBlock.code(fence.group(2) ?? '', language));
+    } else {
+      blocks.add(_MarkdownVisualBlock.code(next.group(0)!, 'svg'));
+    }
+    cursor = next.end;
+  }
+
+  return blocks.isEmpty
+      ? <_MarkdownVisualBlock>[const _MarkdownVisualBlock.text('')]
+      : blocks;
+}
+
+Match? _firstMatchAtOrAfter(RegExp expression, String source, int start) {
+  for (final match in expression.allMatches(source)) {
+    if (match.start >= start) return match;
+  }
+  return null;
+}
+
 class CodeBlockWrapper extends StatelessWidget {
   final Widget child;
   final String code;
@@ -477,7 +786,10 @@ class CodeBlockWrapper extends StatelessWidget {
   Widget build(BuildContext context) {
     final isSvg = _isSvgBlock(code, language);
     final isMermaid = _isMermaidBlock(code, language);
-    final codeBlock = Stack(
+    if (isMermaid) return MermaidPreview(source: code);
+    if (isSvg) return SvgSketchPreview(svg: _extractSvg(code));
+
+    return Stack(
       children: [
         child,
         Positioned(
@@ -487,31 +799,12 @@ class CodeBlockWrapper extends StatelessWidget {
         ),
       ],
     );
-
-    if (isMermaid) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          MermaidPreview(source: code),
-          codeBlock,
-        ],
-      );
-    }
-
-    if (!isSvg) return codeBlock;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SvgSketchPreview(svg: code),
-        codeBlock,
-      ],
-    );
   }
 
   bool _isSvgBlock(String source, String? language) {
     final lang = language?.trim().toLowerCase();
-    return lang == 'svg' || source.trimLeft().startsWith('<svg');
+    return lang == 'svg' ||
+        RegExp(r'<svg\b', caseSensitive: false).hasMatch(source);
   }
 
   bool _isMermaidBlock(String source, String? language) {
@@ -520,7 +813,19 @@ class CodeBlockWrapper extends StatelessWidget {
     return lang == 'mermaid' ||
         trimmed.startsWith('flowchart') ||
         trimmed.startsWith('graph ') ||
-        trimmed.startsWith('mindmap');
+        trimmed.startsWith('mindmap') ||
+        trimmed.startsWith('sequencediagram') ||
+        trimmed.startsWith('classdiagram') ||
+        trimmed.startsWith('statediagram') ||
+        trimmed.startsWith('erdiagram') ||
+        trimmed.startsWith('pie') ||
+        trimmed.startsWith('xychart');
+  }
+
+  String _extractSvg(String source) {
+    final match = RegExp(r'<svg\b[\s\S]*?</svg>', caseSensitive: false)
+        .firstMatch(source);
+    return match?.group(0) ?? source.trim();
   }
 }
 
@@ -935,6 +1240,8 @@ class ThinkingSectionWidget extends StatelessWidget {
   final bool isSelectable;
   final bool showThinking;
   final VoidCallback onToggle;
+  final String searchQuery;
+  final bool isActiveSearchMatch;
 
   const ThinkingSectionWidget({
     super.key,
@@ -944,6 +1251,8 @@ class ThinkingSectionWidget extends StatelessWidget {
     this.isSelectable = true,
     required this.showThinking,
     required this.onToggle,
+    this.searchQuery = '',
+    this.isActiveSearchMatch = false,
   });
 
   @override
@@ -1004,6 +1313,8 @@ class ThinkingSectionWidget extends StatelessWidget {
                 isUser: false,
                 isDarkMode: isDarkMode,
                 isSelectable: isSelectable,
+                searchQuery: searchQuery,
+                isActiveSearchMatch: isActiveSearchMatch,
               ),
             ),
         ],
@@ -1139,7 +1450,12 @@ class _MessageDetailsPanel extends StatelessWidget {
       if (value is Map) {
         rows.addAll(_flattenDetails(Map<String, dynamic>.from(value), label));
       } else if (value is List) {
-        rows.add(_DetailRow(label, value.map((item) => '$item').join(', ')));
+        rows.add(
+          _DetailRow(
+            label,
+            value.isEmpty ? 'No items' : '${value.length} items',
+          ),
+        );
       } else {
         rows.add(_DetailRow(label, '$value'));
       }
@@ -1278,35 +1594,90 @@ class MessageActionButtons extends StatelessWidget {
   final String text;
   final VoidCallback? onEdit;
   final VoidCallback? onRegenerate;
+  final VoidCallback? onSpeak;
+  final ValueChanged<MessageDownloadFormat>? onDownload;
+  final bool isAudioProcessing;
+  final String? audioStatus;
+  final bool isPdfExporting;
+  final String? pdfStatus;
+  final bool isActiveAudio;
+  final bool isActiveAudioPlaying;
 
   const MessageActionButtons({
     super.key,
     required this.text,
     this.onEdit,
     this.onRegenerate,
+    this.onSpeak,
+    this.onDownload,
+    this.isAudioProcessing = false,
+    this.audioStatus,
+    this.isPdfExporting = false,
+    this.pdfStatus,
+    this.isActiveAudio = false,
+    this.isActiveAudioPlaying = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Column(
       mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        _ActionButton(
-          icon: Icons.copy_rounded,
-          tooltip: 'Copy',
-          onPressed: () => _copyToClipboard(context),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _ActionButton(
+              icon: Icons.copy_rounded,
+              tooltip: 'Copy',
+              onPressed: () => _copyToClipboard(context),
+            ),
+            if (onEdit != null)
+              _ActionButton(
+                icon: Icons.edit_outlined,
+                tooltip: 'Edit',
+                onPressed: onEdit!,
+              ),
+            if (onRegenerate != null)
+              _ActionButton(
+                icon: Icons.refresh_rounded,
+                tooltip: 'Regenerate',
+                onPressed: onRegenerate!,
+              ),
+            if (onSpeak != null)
+              _ActionButton(
+                icon: isActiveAudioPlaying
+                    ? Icons.stop_rounded
+                    : Icons.play_arrow_rounded,
+                tooltip: isAudioProcessing
+                    ? 'Generating audio'
+                    : isActiveAudioPlaying
+                        ? 'Stop audio'
+                        : isActiveAudio
+                            ? 'Play audio'
+                            : 'Generate and play audio',
+                onPressed: isAudioProcessing ? null : onSpeak,
+                isLoading: isAudioProcessing,
+              ),
+            if (onDownload != null)
+              _DownloadMenuButton(
+                onSelected: onDownload!,
+                isLoading: isPdfExporting,
+              ),
+          ],
         ),
-        if (onEdit != null)
-          _ActionButton(
-            icon: Icons.edit_outlined,
-            tooltip: 'Edit',
-            onPressed: onEdit!,
-          ),
-        if (onRegenerate != null)
-          _ActionButton(
-            icon: Icons.refresh_rounded,
-            tooltip: 'Regenerate',
-            onPressed: onRegenerate!,
+        if (pdfStatus != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 3, right: 2),
+            child: _PdfStatus(label: pdfStatus!),
+          )
+        else if (audioStatus != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 3, right: 2),
+            child: _AudioStatus(
+              label: audioStatus!,
+              isLoading: isAudioProcessing,
+            ),
           ),
       ],
     );
@@ -1326,12 +1697,14 @@ class MessageActionButtons extends StatelessWidget {
 class _ActionButton extends StatelessWidget {
   final IconData icon;
   final String tooltip;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
+  final bool isLoading;
 
   const _ActionButton({
     required this.icon,
     required this.tooltip,
     required this.onPressed,
+    this.isLoading = false,
   });
 
   @override
@@ -1341,10 +1714,195 @@ class _ActionButton extends StatelessWidget {
       excludeFromSemantics: true,
       waitDuration: const Duration(milliseconds: 450),
       child: IconButton(
-        icon: Icon(icon, size: 16, color: AppColors.muted),
+        icon: isLoading
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : Icon(icon, size: 16, color: AppColors.muted),
         onPressed: onPressed,
         padding: EdgeInsets.zero,
         constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+      ),
+    );
+  }
+}
+
+class _DownloadMenuButton extends StatelessWidget {
+  final ValueChanged<MessageDownloadFormat> onSelected;
+  final bool isLoading;
+
+  const _DownloadMenuButton({
+    required this.onSelected,
+    this.isLoading = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 28,
+      height: 28,
+      child: PopupMenuButton<MessageDownloadFormat>(
+        tooltip: isLoading ? 'Creating PDF' : 'Download',
+        enabled: !isLoading,
+        icon: isLoading
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(
+                Icons.download_outlined,
+                size: 16,
+                color: AppColors.muted,
+              ),
+        padding: EdgeInsets.zero,
+        constraints: const BoxConstraints(minWidth: 174),
+        offset: const Offset(0, 28),
+        onSelected: onSelected,
+        itemBuilder: (context) => const [
+          PopupMenuItem(
+            value: MessageDownloadFormat.audio,
+            child: _DownloadMenuItem(
+              icon: Icons.audiotrack_outlined,
+              label: 'Download audio',
+            ),
+          ),
+          PopupMenuItem(
+            value: MessageDownloadFormat.pdf,
+            child: _DownloadMenuItem(
+              icon: Icons.picture_as_pdf_outlined,
+              label: 'Download PDF',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DownloadMenuItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _DownloadMenuItem({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 17, color: AppColors.teal),
+        const SizedBox(width: 9),
+        Text(label),
+      ],
+    );
+  }
+}
+
+class _AudioStatus extends StatelessWidget {
+  final String label;
+  final bool isLoading;
+
+  const _AudioStatus({required this.label, required this.isLoading});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isLoading ? AppColors.muted : AppColors.teal;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          isLoading ? Icons.graphic_eq_rounded : Icons.check_circle_outline,
+          size: 12,
+          color: color,
+        ),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: TextStyle(
+            color: color,
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PdfStatus extends StatelessWidget {
+  final String label;
+
+  const _PdfStatus({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const SizedBox(
+          width: 12,
+          height: 12,
+          child: CircularProgressIndicator(strokeWidth: 1.8),
+        ),
+        const SizedBox(width: 5),
+        Text(
+          '$label...',
+          style: const TextStyle(
+            color: AppColors.muted,
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AudioSeekBar extends StatelessWidget {
+  final Duration position;
+  final Duration? duration;
+  final ValueChanged<Duration>? onSeek;
+
+  const _AudioSeekBar({
+    required this.position,
+    required this.duration,
+    required this.onSeek,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final durationMilliseconds = duration?.inMilliseconds ?? 0;
+    final maximum =
+        durationMilliseconds > 0 ? durationMilliseconds.toDouble() : 1.0;
+    final value =
+        position.inMilliseconds.toDouble().clamp(0, maximum).toDouble();
+    final isReady = durationMilliseconds > 0 && onSeek != null;
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return SliderTheme(
+      data: SliderTheme.of(context).copyWith(
+        trackHeight: 2,
+        activeTrackColor: AppColors.teal,
+        inactiveTrackColor: colorScheme.outlineVariant,
+        thumbColor: AppColors.teal,
+        disabledActiveTrackColor: AppColors.teal.withValues(alpha: 0.25),
+        disabledInactiveTrackColor: colorScheme.outlineVariant,
+        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 4),
+        overlayShape: const RoundSliderOverlayShape(overlayRadius: 10),
+      ),
+      child: SizedBox(
+        height: 22,
+        child: Slider(
+          value: value,
+          min: 0,
+          max: maximum,
+          onChanged: isReady
+              ? (next) => onSeek!(Duration(milliseconds: next.round()))
+              : null,
+        ),
       ),
     );
   }

@@ -400,6 +400,64 @@ class ScrollControllerHelper {
   }
 }
 
+enum QuickAction {
+  brainstorm,
+  webSearch,
+  deepResearch,
+  shell,
+  files,
+  planner,
+  notes,
+  scrapeUrl,
+  rag,
+  runCode,
+  randomHints,
+}
+
+extension QuickActionDetails on QuickAction {
+  String get label => switch (this) {
+        QuickAction.brainstorm => 'Brainstorm',
+        QuickAction.webSearch => 'Web search',
+        QuickAction.deepResearch => 'Deep research',
+        QuickAction.shell => 'Shell',
+        QuickAction.files => 'Files',
+        QuickAction.planner => 'Planner',
+        QuickAction.notes => 'Notes',
+        QuickAction.scrapeUrl => 'Scrape URL',
+        QuickAction.rag => 'RAG',
+        QuickAction.runCode => 'Run code',
+        QuickAction.randomHints => 'Random hints',
+      };
+
+  IconData get icon => switch (this) {
+        QuickAction.brainstorm => Icons.tips_and_updates_outlined,
+        QuickAction.webSearch => Icons.public_rounded,
+        QuickAction.deepResearch => Icons.travel_explore_rounded,
+        QuickAction.shell => Icons.terminal_rounded,
+        QuickAction.files => Icons.folder_open_rounded,
+        QuickAction.planner => Icons.account_tree_rounded,
+        QuickAction.notes => Icons.sticky_note_2_outlined,
+        QuickAction.scrapeUrl => Icons.article_outlined,
+        QuickAction.rag => Icons.manage_search_rounded,
+        QuickAction.runCode => Icons.code_rounded,
+        QuickAction.randomHints => Icons.casino_outlined,
+      };
+
+  String get executionMode => switch (this) {
+        QuickAction.brainstorm => 'brainstorm',
+        QuickAction.webSearch => 'web_search',
+        QuickAction.deepResearch => 'deep_research',
+        QuickAction.shell => 'shell_command_runner',
+        QuickAction.files => 'file_reader_writer',
+        QuickAction.planner => 'multi_step_planner',
+        QuickAction.notes => 'note',
+        QuickAction.scrapeUrl => 'webpage_reader',
+        QuickAction.rag => 'local_document_search',
+        QuickAction.runCode => 'code_executor',
+        QuickAction.randomHints => 'hint',
+      };
+}
+
 class ChatInputArea extends StatelessWidget {
   final TextEditingController controller;
   final bool isDarkMode;
@@ -409,6 +467,8 @@ class ChatInputArea extends StatelessWidget {
   final VoidCallback onStopGeneration;
   final VoidCallback onPickFiles;
   final void Function(int index) onRemoveFile;
+  final QuickAction? selectedAction;
+  final ValueChanged<QuickAction> onActionSelected;
 
   const ChatInputArea({
     super.key,
@@ -420,6 +480,8 @@ class ChatInputArea extends StatelessWidget {
     required this.onStopGeneration,
     required this.onPickFiles,
     required this.onRemoveFile,
+    required this.selectedAction,
+    required this.onActionSelected,
   });
 
   @override
@@ -442,7 +504,10 @@ class ChatInputArea extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              _QuickActionRow(controller: controller),
+              _QuickActionRow(
+                selectedAction: selectedAction,
+                onActionSelected: onActionSelected,
+              ),
               const SizedBox(height: 9),
               if (attachedFiles.isNotEmpty)
                 _AttachmentPreviewStrip(
@@ -548,9 +613,13 @@ class ChatInputArea extends StatelessWidget {
 }
 
 class _QuickActionRow extends StatelessWidget {
-  final TextEditingController controller;
+  final QuickAction? selectedAction;
+  final ValueChanged<QuickAction> onActionSelected;
 
-  const _QuickActionRow({required this.controller});
+  const _QuickActionRow({
+    required this.selectedAction,
+    required this.onActionSelected,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -558,87 +627,29 @@ class _QuickActionRow extends StatelessWidget {
       scrollDirection: Axis.horizontal,
       child: Row(
         children: [
-          _QuickActionChip(
-            icon: Icons.tips_and_updates_outlined,
-            label: 'Brainstorm',
-            onTap: () => _insertPrompt('Brainstorm ideas for '),
-          ),
-          _QuickActionChip(
-            icon: Icons.public_rounded,
-            label: 'Web search',
-            onTap: () => _insertPrompt('Web search: '),
-          ),
-          _QuickActionChip(
-            icon: Icons.terminal_rounded,
-            label: 'Shell',
-            onTap: () => _insertPrompt('Use the shell command runner for: '),
-          ),
-          _QuickActionChip(
-            icon: Icons.folder_open_rounded,
-            label: 'Files',
-            onTap: () => _insertPrompt('Read or write local files for: '),
-          ),
-          _QuickActionChip(
-            icon: Icons.account_tree_rounded,
-            label: 'Planner',
-            onTap: () => _insertPrompt('Create a multi-step plan for: '),
-          ),
-          _QuickActionChip(
-            icon: Icons.sticky_note_2_outlined,
-            label: 'Notes',
-            onTap: () => _insertPrompt('Save a note: '),
-          ),
-          _QuickActionChip(
-            icon: Icons.article_outlined,
-            label: 'Scrape URL',
-            onTap: () => _insertPrompt('Read this URL: '),
-          ),
-          _QuickActionChip(
-            icon: Icons.manage_search_rounded,
-            label: 'RAG',
-            onTap: () => _insertPrompt('Search my local documents for: '),
-          ),
-          _QuickActionChip(
-            icon: Icons.code_rounded,
-            label: 'Run code',
-            onTap: () => _insertPrompt('Run code to analyze: '),
-          ),
-          const SizedBox(width: 22),
-          _QuickActionChip(
-            icon: Icons.casino_outlined,
-            label: 'Random hints',
-            onTap: () => _insertPrompt('Give me a useful hint about '),
-          ),
+          for (final action in QuickAction.values)
+            _QuickActionChip(
+              icon: action.icon,
+              label: action.label,
+              selected: action == selectedAction,
+              onTap: () => onActionSelected(action),
+            ),
         ],
       ),
     );
-  }
-
-  void _insertPrompt(String text) {
-    final selection = controller.selection;
-    final base = controller.text;
-    if (!selection.isValid) {
-      controller.text = '$base$text';
-      controller.selection =
-          TextSelection.collapsed(offset: controller.text.length);
-      return;
-    }
-
-    final updated = base.replaceRange(selection.start, selection.end, text);
-    controller.text = updated;
-    controller.selection =
-        TextSelection.collapsed(offset: selection.start + text.length);
   }
 }
 
 class _QuickActionChip extends StatelessWidget {
   final IconData icon;
   final String label;
+  final bool selected;
   final VoidCallback onTap;
 
   const _QuickActionChip({
     required this.icon,
     required this.label,
+    required this.selected,
     required this.onTap,
   });
 
@@ -649,7 +660,9 @@ class _QuickActionChip extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(right: 7),
       child: Material(
-        color: colorScheme.surface,
+        color: selected
+            ? AppColors.teal.withValues(alpha: 0.14)
+            : colorScheme.surface,
         borderRadius: BorderRadius.circular(8),
         child: InkWell(
           onTap: onTap,
@@ -659,16 +672,22 @@ class _QuickActionChip extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 9),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: AppColors.line),
+              border: Border.all(
+                color: selected ? AppColors.teal : AppColors.line,
+              ),
             ),
             child: Row(
               children: [
-                Icon(icon, size: 14, color: AppColors.orange),
+                Icon(
+                  icon,
+                  size: 14,
+                  color: selected ? AppColors.teal : AppColors.orange,
+                ),
                 const SizedBox(width: 5),
                 Text(
                   label,
                   style: TextStyle(
-                    color: colorScheme.onSurface,
+                    color: selected ? AppColors.teal : colorScheme.onSurface,
                     fontSize: 11,
                     fontWeight: FontWeight.w800,
                   ),
@@ -829,7 +848,7 @@ class _RemoveAttachmentButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppColors.ink.withOpacity(0.78),
+      color: AppColors.ink.withValues(alpha: 0.78),
       borderRadius: BorderRadius.circular(8),
       child: InkWell(
         onTap: onTap,

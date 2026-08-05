@@ -68,17 +68,18 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<ChatProvider>(
-      builder: (context, chatProvider, child) {
+    return Selector<ChatProvider, bool>(
+      selector: (_, provider) => provider.isDarkMode,
+      builder: (context, isDarkMode, child) {
         return MaterialApp(
           title: 'Ollama Chat',
           debugShowCheckedModeBanner: false,
           theme: AppTheme.lightTheme,
           darkTheme: AppTheme.darkTheme,
-          themeMode: chatProvider.isDarkMode ? ThemeMode.dark : ThemeMode.light,
+          themeMode: isDarkMode ? ThemeMode.dark : ThemeMode.light,
           home: ChatScreen(
             toggleTheme: toggleTheme,
-            isDarkMode: chatProvider.isDarkMode,
+            isDarkMode: isDarkMode,
           ),
         );
       },

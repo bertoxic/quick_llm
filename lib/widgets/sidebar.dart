@@ -1,8 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../models/conversation.dart';
 import '../theme/app_theme.dart';
 import '../utils/date_formatter.dart';
+import 'model_picker.dart';
 import 'typing_indicaator.dart';
 
 class Sidebar extends StatefulWidget {
@@ -23,6 +25,7 @@ class Sidebar extends StatefulWidget {
   final Function(int, int)? onEnableSplitMode;
   final bool isSplitMode;
   final String? selectedModel;
+  final ValueListenable<String?>? selectedModelListenable;
   final List<String> availableModels;
   final Function(String)? onModelChanged;
   final VoidCallback? onSettingsTap;
@@ -51,6 +54,7 @@ class Sidebar extends StatefulWidget {
     this.onEnableSplitMode,
     this.isSplitMode = false,
     this.selectedModel,
+    this.selectedModelListenable,
     this.availableModels = const [],
     this.onModelChanged,
     this.onSettingsTap,
@@ -101,12 +105,10 @@ class _SidebarState extends State<Sidebar> {
     return sorted;
   }
 
-  String? get _modelValue {
-    if (widget.selectedModel == null) return null;
-    return widget.availableModels.contains(widget.selectedModel)
-        ? widget.selectedModel
-        : null;
-  }
+  String? _modelValueFor(String? model) =>
+      widget.availableModels.contains(model) ? model : null;
+
+  String? get _modelValue => _modelValueFor(widget.selectedModel);
 
   @override
   Widget build(BuildContext context) {
@@ -252,45 +254,7 @@ class _SidebarState extends State<Sidebar> {
                   ],
                 ),
                 const SizedBox(height: 4),
-                Expanded(
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: _modelValue,
-                      isExpanded: true,
-                      dropdownColor: AppColors.panel,
-                      borderRadius: BorderRadius.circular(8),
-                      hint: const Text(
-                        'Select model',
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: Colors.white70, fontSize: 12),
-                      ),
-                      icon: const Icon(
-                        Icons.keyboard_arrow_down_rounded,
-                        size: 16,
-                        color: Colors.white70,
-                      ),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                      ),
-                      items: widget.availableModels
-                          .map(
-                            (model) => DropdownMenuItem(
-                              value: model,
-                              child:
-                                  Text(model, overflow: TextOverflow.ellipsis),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: widget.onModelChanged == null
-                          ? null
-                          : (model) {
-                              if (model != null) widget.onModelChanged!(model);
-                            },
-                    ),
-                  ),
-                ),
+                Expanded(child: _buildModelPicker()),
               ],
             ),
           ),
@@ -304,6 +268,25 @@ class _SidebarState extends State<Sidebar> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildModelPicker() {
+    Widget buildPicker(String? model) => ModelPickerButton(
+          selectedModel: _modelValueFor(model),
+          models: widget.availableModels,
+          onSelected: (value) => widget.onModelChanged?.call(value),
+          enabled: widget.onModelChanged != null,
+          compact: true,
+          foregroundColor: Colors.white,
+          backgroundColor: Colors.transparent,
+        );
+
+    final listenable = widget.selectedModelListenable;
+    if (listenable == null) return buildPicker(_modelValue);
+    return ValueListenableBuilder<String?>(
+      valueListenable: listenable,
+      builder: (context, model, child) => buildPicker(model),
     );
   }
 
@@ -454,7 +437,7 @@ class _SidebarState extends State<Sidebar> {
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           color: isSelected
-                              ? AppColors.charcoal.withOpacity(0.65)
+                              ? AppColors.charcoal.withValues(alpha: 0.65)
                               : Colors.white54,
                           fontSize: 10,
                         ),

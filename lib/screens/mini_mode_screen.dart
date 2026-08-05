@@ -10,6 +10,7 @@ import '../theme/app_theme.dart';
 import '../utils/local_tools.dart';
 import '../widgets/typing_indicaator.dart';
 import '../widgets/message_bubble.dart';
+import '../widgets/model_picker.dart';
 import '../utils/message_stream_handler.dart';
 import 'dart:async';
 
@@ -413,30 +414,15 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
       ),
       child: Row(
         children: [
-          // Model selector
-          Icon(Icons.psychology, size: 18, color: colorScheme.onSurface),
-          const SizedBox(width: 8),
           Expanded(
-            child: DropdownButton<String>(
-              value: provider.selectedModel,
-              isExpanded: true,
-              isDense: true,
-              underline: Container(),
-              style: TextStyle(
-                fontSize: 13,
-                color: colorScheme.onSurface,
-              ),
-              items: widget.availableModels.map((model) {
-                return DropdownMenuItem(
-                  value: model,
-                  child: Text(model, overflow: TextOverflow.ellipsis),
-                );
-              }).toList(),
-              onChanged: (value) {
-                if (value != null && !provider.isGenerating) {
-                  provider.setSelectedModel(value);
-                }
-              },
+            child: ModelPickerButton(
+              selectedModel: provider.selectedModel,
+              models: widget.availableModels,
+              compact: true,
+              foregroundColor: colorScheme.onSurface,
+              backgroundColor: Colors.transparent,
+              enabled: !provider.isGenerating,
+              onSelected: provider.setSelectedModel,
             ),
           ),
           const SizedBox(width: 8),
@@ -497,7 +483,7 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: _accentColor.withOpacity(0.1),
+                color: _accentColor.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
               child: Icon(Icons.chat_bubble_outline,
@@ -653,7 +639,9 @@ class _MiniModeScreenState extends State<MiniModeScreen> {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(widget.isDarkMode ? 0.22 : 0.05),
+            color: Colors.black.withValues(
+              alpha: widget.isDarkMode ? 0.22 : 0.05,
+            ),
             blurRadius: 4,
             offset: const Offset(0, -2),
           ),

@@ -31,6 +31,12 @@ class StorageService {
       'providerEndpoint':
           prefs.getString('providerEndpoint') ?? 'http://localhost:11434',
       'selectedModel': prefs.getString('selectedModel'),
+      'voiceEnabled': prefs.getBool('voiceEnabled') ?? false,
+      'voiceEndpoint':
+          prefs.getString('voiceEndpoint') ?? 'http://localhost:8880/v1',
+      'voiceModel': prefs.getString('voiceModel') ?? 'kokoro',
+      'voiceName': prefs.getString('voiceName') ?? 'af_bella',
+      'voiceSpeed': prefs.getDouble('voiceSpeed') ?? 1.0,
     };
   }
 
@@ -85,6 +91,21 @@ class StorageService {
       } else {
         await prefs.setString('selectedModel', model);
       }
+    }
+    if (preferences.containsKey('voiceEnabled')) {
+      await prefs.setBool('voiceEnabled', preferences['voiceEnabled']);
+    }
+    if (preferences.containsKey('voiceEndpoint')) {
+      await prefs.setString('voiceEndpoint', preferences['voiceEndpoint']);
+    }
+    if (preferences.containsKey('voiceModel')) {
+      await prefs.setString('voiceModel', preferences['voiceModel']);
+    }
+    if (preferences.containsKey('voiceName')) {
+      await prefs.setString('voiceName', preferences['voiceName']);
+    }
+    if (preferences.containsKey('voiceSpeed')) {
+      await prefs.setDouble('voiceSpeed', preferences['voiceSpeed']);
     }
   }
 

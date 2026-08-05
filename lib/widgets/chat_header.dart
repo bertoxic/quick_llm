@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -6,6 +7,7 @@ import '../theme/app_theme.dart';
 class ChatHeader extends StatefulWidget {
   final bool isDarkMode;
   final String? selectedModel;
+  final ValueListenable<String?>? selectedModelListenable;
   final List<String> availableModels;
   final bool isAlwaysOnTop;
   final Function(String) onModelChanged;
@@ -25,6 +27,7 @@ class ChatHeader extends StatefulWidget {
     super.key,
     required this.isDarkMode,
     required this.selectedModel,
+    this.selectedModelListenable,
     required this.availableModels,
     required this.isAlwaysOnTop,
     required this.onModelChanged,
@@ -160,9 +163,7 @@ class _ChatHeaderState extends State<ChatHeader>
                       Expanded(child: _HeaderBrand(colorScheme: colorScheme)),
                       if (constraints.maxWidth >= 300) ...[
                         const SizedBox(width: 8),
-                        Flexible(
-                          child: _ModelStatusChip(model: widget.selectedModel),
-                        ),
+                        Flexible(child: _buildModelStatusChip()),
                       ],
                     ],
                   ),
@@ -223,6 +224,17 @@ class _ChatHeaderState extends State<ChatHeader>
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildModelStatusChip() {
+    final listenable = widget.selectedModelListenable;
+    if (listenable == null) {
+      return _ModelStatusChip(model: widget.selectedModel);
+    }
+    return ValueListenableBuilder<String?>(
+      valueListenable: listenable,
+      builder: (context, model, child) => _ModelStatusChip(model: model),
     );
   }
 }

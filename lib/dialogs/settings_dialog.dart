@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/ai_provider.dart';
+import '../models/voice_settings.dart';
 import '../theme/app_theme.dart';
 import '../utils/local_tools.dart';
 
@@ -13,6 +14,7 @@ class SettingsDialog extends StatefulWidget {
   final int numCtx;
   final bool isDarkMode;
   final AiProviderConfig aiProvider;
+  final VoiceSettings voiceSettings;
   final Function(bool) onUseSystemPromptChanged;
   final Function(bool) onEnableToolCallingChanged;
   final Function(double) onTemperatureChanged;
@@ -20,6 +22,7 @@ class SettingsDialog extends StatefulWidget {
   final Function(int) onNumCtxChanged;
   final VoidCallback onSave;
   final VoidCallback onProviderTap;
+  final VoidCallback onVoiceTap;
 
   const SettingsDialog({
     super.key,
@@ -31,6 +34,7 @@ class SettingsDialog extends StatefulWidget {
     required this.numCtx,
     required this.isDarkMode,
     required this.aiProvider,
+    required this.voiceSettings,
     required this.onUseSystemPromptChanged,
     required this.onEnableToolCallingChanged,
     required this.onTemperatureChanged,
@@ -38,6 +42,7 @@ class SettingsDialog extends StatefulWidget {
     required this.onNumCtxChanged,
     required this.onSave,
     required this.onProviderTap,
+    required this.onVoiceTap,
   });
 
   @override
@@ -93,6 +98,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       _buildProviderConnection(),
+                      const SizedBox(height: 14),
+                      _buildVoiceConnection(),
                       const SizedBox(height: 14),
                       _buildSystemPrompt(),
                       const SizedBox(height: 14),
@@ -194,6 +201,37 @@ class _SettingsDialogState extends State<SettingsDialog> {
             onPressed: widget.onProviderTap,
             icon: const Icon(Icons.settings_input_component_rounded, size: 17),
             label: const Text('Change connection'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildVoiceConnection() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final voice = widget.voiceSettings;
+    return _SettingsCard(
+      icon: Icons.record_voice_over_rounded,
+      title: 'Local Voice / TTS',
+      value: voice.enabled ? 'Enabled' : 'Off',
+      accent: AppColors.orange,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            '${voice.model} • ${voice.voice} • ${voice.normalizedEndpoint}',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: colorScheme.onSurface.withValues(alpha: 0.64),
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: widget.onVoiceTap,
+            icon: const Icon(Icons.settings_voice_rounded, size: 17),
+            label: const Text('Configure local voice'),
           ),
         ],
       ),
@@ -302,7 +340,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
 
   Widget _buildToolCalling() {
     final colorScheme = Theme.of(context).colorScheme;
-    final tools = LocalToolService.tierOneTools;
+    const tools = LocalToolService.tierOneTools;
     return _SettingsCard(
       icon: Icons.extension_rounded,
       title: 'Tool Calling',

@@ -41,7 +41,7 @@ Before calling any tool, silently check: intent, best tool sequence, exact param
 Use the tools like this:
 
 1. Use `calculator` for arithmetic, financial estimates, percentages, totals, comparisons, and any calculation that should not be guessed.
-2. Use `web_search` for live/current information, prices, news, recent facts, API changes, policies, documentation updates, market research, product research, or anything likely to have changed. Search with specific queries; compare returned sources instead of relying on one snippet.
+2. Use `web_search` for live/current information, prices, news, recent facts, API changes, policies, documentation updates, market research, product research, or anything likely to have changed. Search with specific queries; compare returned sources instead of relying on one snippet. Use `deep_research` for a research brief that needs multiple queries, source-page reading, comparison, and citations.
 3. Use `date_time` whenever I ask for today's date, current time, day of the week, local timezone, or date arithmetic. Never infer the current date from training data.
 3. Use `web_scraper_reader`, `webpage_reader`, or URL-reading tools when I provide a specific link and ask you to read, summarize, extract, compare, or analyze its content.
 4. Use `note_save` when I ask you to remember, store, save, or keep information.
@@ -78,7 +78,7 @@ For complex requests, use this process:
 6. Give a clear final answer with practical next steps.
 
 Default tool chains:
-* Research/report: `web_search` -> synthesize -> `document_generator` or `pdf_document_generator`.
+* Research/report: `deep_research` -> synthesize cited evidence -> `document_generator` or `pdf_document_generator`.
 * Architecture/visual explanation: `tool_router` -> `multi_step_planner` -> `chart_diagram_generator` and, when useful, `mind_map_generator`.
 * Forecast/projection: `web_search` for base rates when current data matters -> `simulation_tool` -> `chart_diagram_generator` or `document_generator`.
 * Run and document: `ci_cli_runner` -> parse results -> final answer or `document_generator`.
@@ -147,6 +147,15 @@ Always prefer accuracy over speed. Use tools when they are useful, but do not ca
       summary: 'Fetch live search results or current market data.',
       detail: 'Uses public web endpoints and injects returned sources.',
       uiSurface: 'Search sidebar',
+    ),
+    LocalToolDefinition(
+      id: 'deep_research',
+      title: 'Deep research',
+      summary:
+          'Plan multi-query research, read source pages, and collect evidence.',
+      detail:
+          'Runs three focused searches, reads selected pages, and returns a citation-ready evidence pack.',
+      uiSurface: 'Research sidebar',
     ),
     LocalToolDefinition(
       id: 'note_saver',
@@ -284,6 +293,18 @@ Always prefer accuracy over speed. Use tools when they are useful, but do not ca
           'query': {
             'type': 'string',
             'description': 'The search query or current-data request.',
+          },
+        },
+      ),
+      functionTool(
+        name: 'deep_research',
+        description:
+            'Run a multi-source research workflow: plan focused searches, read selected webpages, compare evidence, and return citation-ready context. Use for research reports or questions that need more than a quick search.',
+        required: const ['topic'],
+        properties: {
+          'topic': {
+            'type': 'string',
+            'description': 'The research question or topic to investigate.',
           },
         },
       ),
@@ -860,6 +881,15 @@ Always prefer accuracy over speed. Use tools when they are useful, but do not ca
               'query',
               'search_query',
               'prompt',
+            ]) ??
+            '');
+      case 'deep_research':
+      case 'research':
+        return _runDeepResearch(_stringArg(arguments, const [
+              'topic',
+              'query',
+              'prompt',
+              'question',
             ]) ??
             '');
       case 'web_scraper_reader':
@@ -2346,10 +2376,17 @@ Always prefer accuracy over speed. Use tools when they are useful, but do not ca
     }
   }
 
-  static Future<LocalToolContext> contextForPrompt(String prompt) async {
+  static Future<LocalToolContext> contextForPrompt(
+    String prompt, {
+    String? forcedAction,
+  }) async {
     final results = <String>[];
     final activities = <LocalToolActivity>[];
     final routes = _routesForPrompt(prompt);
+    final action = forcedAction?.trim().toLowerCase();
+    var hasForcedWebPipeline = false;
+    var hasForcedShell = false;
+    var hasForcedFile = false;
 
     if (routes.isNotEmpty) {
       final routeSummary = routes
@@ -2383,6 +2420,84 @@ Always prefer accuracy over speed. Use tools when they are useful, but do not ca
       activities.addAll(planner.activities);
     }
 
+    if (action != null && action.isNotEmpty) {
+      switch (action) {
+        case 'brainstorm':
+          results.add(
+            'BRAINSTORM_MODE: Generate a diverse, non-obvious set of ideas for the user request. Group them into themes, include practical next actions, and avoid researching unless the user explicitly asks for evidence.',
+          );
+          activities.add(
+            LocalToolActivity.complete(
+              id: 'brainstorm',
+              title: 'Brainstorm',
+              summary: 'Applied the focused ideation workflow.',
+              uiSurface: 'Quick action',
+              steps: const [
+                'Activated divergent ideation mode',
+                'Requested grouped, actionable ideas',
+              ],
+            ),
+          );
+        case 'web_search':
+          final execution = await _runWebSearch(prompt);
+          results.addAll(execution.results);
+          activities.addAll(execution.activities);
+          hasForcedWebPipeline = true;
+        case 'deep_research':
+          final execution = await _runDeepResearch(prompt);
+          results.addAll(execution.results);
+          activities.addAll(execution.activities);
+          hasForcedWebPipeline = true;
+        case 'shell_command_runner':
+          final execution = await _executeSafeShellCommand(prompt.trim());
+          results.addAll(execution.results);
+          activities.addAll(execution.activities);
+          hasForcedShell = true;
+        case 'file_reader_writer':
+          final execution = await _runFileReadTool(prompt);
+          results.addAll(execution.results);
+          activities.addAll(execution.activities);
+          hasForcedFile = true;
+        case 'multi_step_planner':
+          final execution = _runMultiStepPlannerTool(
+            task: prompt,
+            requestedStepCount: 6,
+          );
+          results.addAll(execution.results);
+          activities.addAll(execution.activities);
+        case 'webpage_reader':
+          final execution = await _readRequestedUrls(
+            prompt,
+            id: 'webpage_reader',
+            title: 'Webpage reader',
+            resultName: 'webpage_reader',
+          );
+          results.addAll(execution.results);
+          activities.addAll(execution.activities);
+          hasForcedWebPipeline = true;
+        case 'local_document_search':
+          final execution = await _runLocalDocumentSearchTool(
+            query: prompt,
+            paths: const [],
+          );
+          results.addAll(execution.results);
+          activities.addAll(execution.activities);
+        case 'hint':
+          results.add(
+            'HINT_MODE: Give one concise, specific, immediately useful hint for the user request. Explain why it is useful in one sentence.',
+          );
+        // Notes and code require structured arguments. Keep the mode visible
+        // to the model instead of guessing a key, language, or unsafe command.
+        case 'note':
+        case 'code_executor':
+          results.add(
+            'QUICK_ACTION_MODE=$action. Use the matching native tool with concrete arguments from the user request. Do not invent a note key, programming language, or code snippet.',
+          );
+        default:
+          break;
+      }
+    }
+
     final expression = _extractExpression(prompt);
     if (expression != null) {
       final value = _ExpressionEvaluator(expression).parse();
@@ -2406,24 +2521,26 @@ Always prefer accuracy over speed. Use tools when they are useful, but do not ca
       }
     }
 
-    if (_looksLikeWebReaderRequest(prompt)) {
-      final execution = await _readRequestedUrls(prompt);
-      results.addAll(execution.results);
-      activities.addAll(execution.activities);
-    }
+    if (!hasForcedWebPipeline) {
+      if (_looksLikeWebReaderRequest(prompt)) {
+        final execution = await _readRequestedUrls(prompt);
+        results.addAll(execution.results);
+        activities.addAll(execution.activities);
+      }
 
-    if (_looksLikeDateTimeRequest(prompt)) {
-      final dayOffset = _dateOffsetForPrompt(prompt);
-      final execution = _runDateTimeTool({
-        'action': _dateTimeActionForPrompt(prompt),
-        if (dayOffset != null) 'days': dayOffset,
-      });
-      results.addAll(execution.results);
-      activities.addAll(execution.activities);
-    } else if (shouldRunLiveWebSearch(prompt)) {
-      final execution = await _runWebSearch(prompt);
-      results.addAll(execution.results);
-      activities.addAll(execution.activities);
+      if (_looksLikeDateTimeRequest(prompt)) {
+        final dayOffset = _dateOffsetForPrompt(prompt);
+        final execution = _runDateTimeTool({
+          'action': _dateTimeActionForPrompt(prompt),
+          if (dayOffset != null) 'days': dayOffset,
+        });
+        results.addAll(execution.results);
+        activities.addAll(execution.activities);
+      } else if (shouldRunLiveWebSearch(prompt)) {
+        final execution = await _runWebSearch(prompt);
+        results.addAll(execution.results);
+        activities.addAll(execution.activities);
+      }
     }
 
     if (_looksLikeNoteRequest(prompt)) {
@@ -2432,13 +2549,13 @@ Always prefer accuracy over speed. Use tools when they are useful, but do not ca
       activities.addAll(execution.activities);
     }
 
-    if (_looksLikeFileReadRequest(prompt)) {
+    if (!hasForcedFile && _looksLikeFileReadRequest(prompt)) {
       final execution = await _runFileReadTool(prompt);
       results.addAll(execution.results);
       activities.addAll(execution.activities);
     }
 
-    if (_looksLikeShellRequest(prompt)) {
+    if (!hasForcedShell && _looksLikeShellRequest(prompt)) {
       final execution = await _runShellTool(prompt);
       results.addAll(execution.results);
       activities.addAll(execution.activities);
@@ -2496,6 +2613,161 @@ Always prefer accuracy over speed. Use tools when they are useful, but do not ca
     }
 
     return search;
+  }
+
+  /// Builds a citation-ready evidence pack instead of relying on a single
+  /// search snippet. Kept native so it works even with models that do not
+  /// reliably chain function calls themselves.
+  static Future<_ToolExecution> _runDeepResearch(String topic) async {
+    final subject = topic.trim();
+    if (subject.isEmpty) {
+      return _ToolExecution.singleFailure(
+        id: 'deep_research',
+        title: 'Deep research',
+        uiSurface: 'Research sidebar',
+        summary: 'Research did not run.',
+        error: 'Missing research topic.',
+        result: 'deep_research failed: missing topic. Do not invent research.',
+      );
+    }
+
+    final queries = deepResearchQueryPlan(subject);
+    final results = <String>[
+      'DEEP_RESEARCH_EVIDENCE_PACK for "$subject".',
+      'Final-answer requirements: provide a concise answer first; cite factual claims inline with source title and URL; separate sourced facts, reasonable inferences, and unresolved or conflicting evidence; do not cite a source that is not present below.',
+      'Research plan: ${queries.asMap().entries.map((entry) => '${entry.key + 1}. ${entry.value}').join(' | ')}',
+    ];
+    final activities = <LocalToolActivity>[];
+    final searches = <_ToolExecution>[];
+
+    // Sequential requests are friendlier to public search endpoints and give
+    // us a stable activity order in the research sidebar.
+    for (final query in queries) {
+      final execution = await _fetchDuckDuckGoSearch(query);
+      searches.add(execution);
+      results.addAll(execution.results);
+      activities.addAll(execution.activities);
+    }
+
+    final sources = <LocalToolSource>[];
+    for (final execution in searches) {
+      for (final activity in execution.activities) {
+        sources.addAll(activity.sources);
+      }
+    }
+    final selectedUrls = _selectResearchSourceUrls(sources, maxCount: 3);
+    final pages = <_ToolExecution>[];
+    for (final url in selectedUrls) {
+      final page = await _readRequestedUrls(
+        url,
+        id: 'deep_research_reader',
+        title: 'Research source reader',
+        resultName: 'deep_research_reader',
+      );
+      pages.add(page);
+      results.addAll(page.results);
+      activities.addAll(page.activities);
+    }
+
+    final citedSources = <LocalToolSource>[];
+    final seenSources = <String>{};
+    for (final source in sources) {
+      if (seenSources.add(source.url)) citedSources.add(source);
+    }
+    for (final page in pages) {
+      for (final activity in page.activities) {
+        for (final source in activity.sources) {
+          if (seenSources.add(source.url)) citedSources.add(source);
+        }
+      }
+    }
+
+    final successfulSearches =
+        searches.where((execution) => execution.hasCompletedActivity).length;
+    final successfulPages =
+        pages.where((execution) => execution.hasCompletedActivity).length;
+    activities.insert(
+      0,
+      LocalToolActivity.complete(
+        id: 'deep_research',
+        title: 'Deep research',
+        summary: 'Built a multi-query, multi-source evidence pack.',
+        uiSurface: 'Research sidebar',
+        steps: [
+          'Planned ${queries.length} focused search queries',
+          'Completed $successfulSearches/${queries.length} search passes',
+          'Selected ${selectedUrls.length} distinct source page(s)',
+          'Read $successfulPages/${selectedUrls.length} source page(s)',
+          'Attached citation and evidence requirements for synthesis',
+        ],
+        output:
+            '${queries.length} queries, $successfulSearches searches, $successfulPages pages, ${citedSources.length} sources',
+        sources: citedSources.take(12).toList(),
+      ),
+    );
+
+    if (citedSources.isEmpty) {
+      results.add(
+        'Deep research could not retrieve a usable source. State that live research was unavailable instead of presenting unsupported claims.',
+      );
+    } else {
+      results.add(
+        'Citation catalog:\n${citedSources.take(12).map((source) => '- ${source.title}: ${source.url}').join('\n')}',
+      );
+    }
+
+    return _ToolExecution(results: results, activities: activities);
+  }
+
+  /// The stable query plan used by native and model-invoked Deep Research.
+  static List<String> deepResearchQueryPlan(String topic) {
+    final base = _searchQueryForPrompt(topic).trim();
+    final query = base.isEmpty ? topic : base;
+    final candidates = [
+      query,
+      '$query primary sources official documentation',
+      '$query independent analysis evidence perspectives',
+    ];
+    final unique = <String>[];
+    final normalized = <String>{};
+    for (final candidate in candidates) {
+      final compact = candidate.replaceAll(RegExp(r'\s+'), ' ').trim();
+      if (compact.isEmpty || !normalized.add(compact.toLowerCase())) continue;
+      unique.add(compact.length > 240 ? compact.substring(0, 240) : compact);
+    }
+    return unique;
+  }
+
+  static List<String> _selectResearchSourceUrls(
+    List<LocalToolSource> sources, {
+    required int maxCount,
+  }) {
+    final selected = <String>[];
+    final seenUrls = <String>{};
+    final seenHosts = <String>{};
+
+    void select(LocalToolSource source, {required bool requireNewHost}) {
+      final uri = Uri.tryParse(source.url);
+      if (uri == null ||
+          !(uri.scheme == 'https' || uri.scheme == 'http') ||
+          uri.host.isEmpty ||
+          selected.length >= maxCount ||
+          seenUrls.contains(source.url) ||
+          (requireNewHost && seenHosts.contains(uri.host.toLowerCase()))) {
+        return;
+      }
+      seenUrls.add(source.url);
+      seenHosts.add(uri.host.toLowerCase());
+      selected.add(source.url);
+    }
+
+    for (final source in sources) {
+      select(source, requireNewHost: true);
+    }
+    for (final source in sources) {
+      select(source, requireNewHost: false);
+    }
+    return selected;
   }
 
   static Future<_ToolExecution?> _fetchCryptoPrices(

@@ -168,9 +168,10 @@ class ChatProvider with ChangeNotifier {
   }
 
   // Settings management
-  void setSelectedModel(String? model) {
+  void setSelectedModel(String? model, {bool notify = true}) {
+    if (_selectedModel == model) return;
     _selectedModel = model;
-    notifyListeners();
+    if (notify) notifyListeners();
   }
 
   void setTemperature(double temp) {

@@ -2,17 +2,22 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../dialogs/settings_dialog.dart';
 import '../dialogs/provider_connection_dialog.dart';
+import '../dialogs/voice_settings_dialog.dart';
 import '../models/ai_provider.dart';
 import '../models/chat_message.dart';
 import '../models/conversation.dart';
+import '../models/voice_settings.dart';
 import '../provider/ChatProvider.dart';
 import '../services/ai_service.dart';
+import '../services/markdown_pdf_service.dart';
 import '../services/storage_service.dart';
+import '../services/voice_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/conversation_manager.dart';
 import '../utils/helpers.dart';
@@ -20,6 +25,7 @@ import '../utils/local_tools.dart';
 import '../utils/thinking_parser.dart';
 import '../widgets/chat_header.dart';
 import '../widgets/message_bubble.dart';
+import '../widgets/model_picker.dart';
 import '../widgets/sidebar.dart';
 import '../widgets/typing_indicaator.dart';
 import 'mini_mode_screen.dart';
@@ -39,7 +45,8 @@ class _ChatPaneRuntime {
   final List<File> attachedFiles = [];
 
   int? conversationIndex;
-  String? selectedModel;
+  String? _selectedModel;
+  final ValueNotifier<String?> selectedModelListenable = ValueNotifier(null);
   List<ChatMessage> messages = [];
   bool isGenerating = false;
   bool isSending = false;
@@ -47,11 +54,21 @@ class _ChatPaneRuntime {
   String responseBuffer = '';
   String thinkingBuffer = '';
   Map<String, dynamic>? activeRequestDetails;
+  QuickAction? selectedAction;
+
+  String? get selectedModel => _selectedModel;
+
+  set selectedModel(String? value) {
+    if (_selectedModel == value) return;
+    _selectedModel = value;
+    selectedModelListenable.value = value;
+  }
 
   void dispose() {
     controller.dispose();
     scrollHelper.dispose();
     aiService.dispose();
+    selectedModelListenable.dispose();
   }
 }
 
@@ -76,7 +93,7 @@ class _PreviewChip extends StatelessWidget {
       decoration: BoxDecoration(
         color: colorScheme.surface,
         borderRadius: BorderRadius.circular(7),
-        border: Border.all(color: accent.withOpacity(0.28)),
+        border: Border.all(color: accent.withValues(alpha: 0.28)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -118,17 +135,33 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
   late final _ChatPaneRuntime _leftPane;
   late final _ChatPaneRuntime _rightPane;
   final TextEditingController _systemPromptController = TextEditingController();
+  final MarkdownPdfService _markdownPdfService = MarkdownPdfService();
+  final VoiceService _voiceService = VoiceService();
 
   bool _isAlwaysOnTop = false;
   bool _isMiniMode = false;
   bool _isSplitMode = false;
   bool _copyFileAttachments = true;
+  String? _audioProcessingMessageKey;
+  String? _audioReadyMessageKey;
+  String? _audioReadyStatus;
+  String? _pdfExportingMessageKey;
+  String? _pdfExportStatus;
+  String? _activeAudioMessageKey;
+  bool _isActiveAudioPlaying = false;
+  Duration _activeAudioPosition = Duration.zero;
+  Duration? _activeAudioDuration;
+  VoiceSettings _voiceSettings = VoiceSettings.kokoro();
   double _splitRatio = 0.5;
   List<String> _availableModels = [];
   String _chatSearchQuery = '';
   List<int> _chatSearchMatches = [];
   int _chatSearchCursor = 0;
   Timer? _statsTimer;
+  Timer? _audioStatusTimer;
+  StreamSubscription<PlayerState>? _audioPlayerStateSubscription;
+  StreamSubscription<Duration>? _audioPositionSubscription;
+  StreamSubscription<Duration?>? _audioDurationSubscription;
 
   @override
   void initState() {
@@ -139,6 +172,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
     _rightPane = _ChatPaneRuntime(_PaneSide.right);
 
     windowManager.addListener(this);
+    _listenToAudioPlayer();
     _setupScrollListeners();
     _initializeApp();
   }
@@ -146,9 +180,14 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
   @override
   void dispose() {
     _statsTimer?.cancel();
+    _audioStatusTimer?.cancel();
+    unawaited(_audioPlayerStateSubscription?.cancel() ?? Future.value());
+    unawaited(_audioPositionSubscription?.cancel() ?? Future.value());
+    unawaited(_audioDurationSubscription?.cancel() ?? Future.value());
     windowManager.removeListener(this);
     _leftPane.dispose();
     _rightPane.dispose();
+    unawaited(_voiceService.dispose());
     _systemPromptController.dispose();
     super.dispose();
   }
@@ -231,12 +270,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
     if (query.isNotEmpty) {
       for (var i = 0; i < _leftPane.messages.length; i++) {
         final message = _leftPane.messages[i];
-        final haystack = [
-          message.text,
-          message.thinkingText ?? '',
-          message.modelName ?? '',
-        ].join('\n').toLowerCase();
-        if (haystack.contains(query)) matches.add(i);
+        if (_messageMatchesSearch(message, query)) matches.add(i);
       }
     }
 
@@ -303,6 +337,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
     _systemPromptController.text = provider.systemPrompt;
     setState(() {
       _copyFileAttachments = prefs['copyFileAttachments'] ?? true;
+      _voiceSettings = VoiceSettings.fromPreferences(prefs);
     });
   }
 
@@ -322,6 +357,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
       'copyFileAttachments': _copyFileAttachments,
       'selectedModel': provider.selectedModel,
       ...provider.aiProvider.toPreferenceValues(),
+      ..._voiceSettings.toPreferenceValues(),
     });
   }
 
@@ -332,14 +368,13 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
     final models = await _leftPane.aiService.fetchAvailableModels();
     if (!mounted) return;
 
-    setState(() {
-      _availableModels = models;
-    });
-
     if (models.isEmpty) {
-      provider.setSelectedModel(null);
-      _leftPane.selectedModel = null;
-      _rightPane.selectedModel = null;
+      provider.setSelectedModel(null, notify: false);
+      setState(() {
+        _availableModels = models;
+        _leftPane.selectedModel = null;
+        _rightPane.selectedModel = null;
+      });
       _showSnackBar(
         'No models found for ${provider.aiProvider.displayName}. Check the connection in Settings.',
         duration: 5,
@@ -352,13 +387,16 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
         ? provider.selectedModel!
         : models.first;
 
-    provider.setSelectedModel(current);
-    if (!_availableModels.contains(_leftPane.selectedModel)) {
-      _leftPane.selectedModel = current;
-    }
-    if (!_availableModels.contains(_rightPane.selectedModel)) {
-      _rightPane.selectedModel = current;
-    }
+    provider.setSelectedModel(current, notify: false);
+    setState(() {
+      _availableModels = models;
+      if (!models.contains(_leftPane.selectedModel)) {
+        _leftPane.selectedModel = current;
+      }
+      if (!models.contains(_rightPane.selectedModel)) {
+        _rightPane.selectedModel = current;
+      }
+    });
   }
 
   Future<void> _sendMessage(
@@ -371,6 +409,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
     final pane = _pane(side);
     final provider = context.read<ChatProvider>();
     final selectedModel = pane.selectedModel ?? provider.selectedModel;
+    final selectedAction = regenerate ? null : pane.selectedAction;
     var messageText = (message ?? pane.controller.text).trim();
     ChatMessage? userMessage;
 
@@ -411,6 +450,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
         pane.messages.add(newUserMessage);
         pane.controller.clear();
         pane.attachedFiles.clear();
+        pane.selectedAction = null;
       });
     }
 
@@ -425,7 +465,10 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
       ChatMessage(text: '', isUser: false, timestamp: DateTime.now()),
     ]);
     var toolContext = provider.enableToolCalling
-        ? await LocalToolService.contextForPrompt(activeUserMessage.text)
+        ? await LocalToolService.contextForPrompt(
+            activeUserMessage.text,
+            forcedAction: selectedAction?.executionMode,
+          )
         : const LocalToolContext([]);
     final effectivePrompt = provider.enableToolCalling
         ? LocalToolService.composePrompt(activeUserMessage.text, toolContext)
@@ -441,6 +484,9 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
       fileTypes: fileTypes,
       toolContext: toolContext,
     );
+    if (selectedAction != null) {
+      requestDetails['quick_action'] = selectedAction.executionMode;
+    }
 
     final assistantMessage = ChatMessage(
       text: '',
@@ -974,13 +1020,14 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
   void _setPaneModel(_PaneSide side, String model) {
     final pane = _pane(side);
     final provider = context.read<ChatProvider>();
+    if (pane.selectedModel == model) return;
 
-    setState(() {
-      pane.selectedModel = model;
-    });
+    pane.selectedModel = model;
 
     if (side == _PaneSide.left) {
-      provider.setSelectedModel(model);
+      // The pane has already rebuilt locally. Avoid a second app-wide provider
+      // notification just to mirror this value for persistence.
+      provider.setSelectedModel(model, notify: false);
       unawaited(_savePreferences());
     }
   }
@@ -1008,9 +1055,195 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
         },
         aiProvider: provider.aiProvider,
         onProviderTap: _showProviderConnectionDialog,
+        voiceSettings: _voiceSettings,
+        onVoiceTap: _showVoiceSettingsDialog,
         isDarkMode: widget.isDarkMode,
       ),
     );
+  }
+
+  Future<void> _showVoiceSettingsDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => VoiceSettingsDialog(
+        initialSettings: _voiceSettings,
+        onLoadVoices: _voiceService.fetchVoices,
+        onTestSpeech: _voiceService.speak,
+        onSave: (settings) async {
+          setState(() => _voiceSettings = settings);
+          await _savePreferences();
+        },
+      ),
+    );
+  }
+
+  Future<void> _speakMessage(String text, String messageKey) async {
+    if (!_voiceSettings.enabled) {
+      _showSnackBar('Enable Local Voice / TTS in Settings first.');
+      return;
+    }
+    if (_audioProcessingMessageKey != null) {
+      _showSnackBar('Audio is already being generated.');
+      return;
+    }
+
+    if (_activeAudioMessageKey == messageKey) {
+      if (_isActiveAudioPlaying) {
+        await _voiceService.stop();
+      } else {
+        await _voiceService.resume();
+      }
+      return;
+    }
+
+    _beginAudioProcessing(messageKey);
+    try {
+      await _voiceService.speak(text, _voiceSettings);
+      if (mounted) {
+        setState(() {
+          _activeAudioMessageKey = messageKey;
+          _isActiveAudioPlaying = _voiceService.isPlaying;
+          _activeAudioPosition = _voiceService.position;
+          _activeAudioDuration = _voiceService.duration;
+        });
+      }
+      _completeAudioProcessing(
+        messageKey,
+        status: 'Audio ready — playing now',
+        notification: 'Audio is ready and playing.',
+      );
+    } catch (error) {
+      if (mounted) _showSnackBar('Voice playback failed: $error');
+    } finally {
+      _endAudioProcessing(messageKey);
+    }
+  }
+
+  Future<void> _downloadMessageAudio(String text, String messageKey) async {
+    if (!_voiceSettings.enabled) {
+      _showSnackBar('Enable Local Voice / TTS in Settings first.');
+      return;
+    }
+    if (_audioProcessingMessageKey != null) {
+      _showSnackBar('Audio is already being generated.');
+      return;
+    }
+
+    _beginAudioProcessing(messageKey);
+    try {
+      final audioFile = await _voiceService.download(text, _voiceSettings);
+      _completeAudioProcessing(
+        messageKey,
+        status: 'Audio downloaded',
+        notification: 'Audio downloaded to ${audioFile.path}',
+      );
+    } catch (error) {
+      if (mounted) _showSnackBar('Audio download failed: $error');
+    } finally {
+      _endAudioProcessing(messageKey);
+    }
+  }
+
+  Future<void> _downloadMessagePdf(String text, String messageKey) async {
+    if (_pdfExportingMessageKey != null) {
+      _showSnackBar('A PDF is already being created.');
+      return;
+    }
+
+    setState(() {
+      _pdfExportingMessageKey = messageKey;
+      _pdfExportStatus = 'Preparing PDF';
+    });
+    // Let the per-message loading indicator paint before the export begins.
+    await WidgetsBinding.instance.endOfFrame;
+    try {
+      final pdfFile = await _markdownPdfService.download(
+        text,
+        onStage: (stage) {
+          if (!mounted || _pdfExportingMessageKey != messageKey) return;
+          setState(() => _pdfExportStatus = stage);
+        },
+      );
+      if (mounted) _showSnackBar('PDF downloaded to ${pdfFile.path}');
+    } catch (error) {
+      if (mounted) _showSnackBar('PDF download failed: $error');
+    } finally {
+      if (mounted && _pdfExportingMessageKey == messageKey) {
+        setState(() {
+          _pdfExportingMessageKey = null;
+          _pdfExportStatus = null;
+        });
+      }
+    }
+  }
+
+  void _beginAudioProcessing(String messageKey) {
+    _audioStatusTimer?.cancel();
+    setState(() {
+      _audioProcessingMessageKey = messageKey;
+      _audioReadyMessageKey = null;
+      _audioReadyStatus = null;
+    });
+  }
+
+  void _completeAudioProcessing(
+    String messageKey, {
+    required String status,
+    required String notification,
+  }) {
+    if (!mounted) return;
+
+    setState(() {
+      _audioProcessingMessageKey = null;
+      _audioReadyMessageKey = messageKey;
+      _audioReadyStatus = status;
+    });
+    _showSnackBar(notification);
+    _audioStatusTimer?.cancel();
+    _audioStatusTimer = Timer(const Duration(seconds: 4), () {
+      if (!mounted || _audioReadyMessageKey != messageKey) return;
+      setState(() {
+        _audioReadyMessageKey = null;
+        _audioReadyStatus = null;
+      });
+    });
+  }
+
+  void _endAudioProcessing(String messageKey) {
+    if (!mounted || _audioProcessingMessageKey != messageKey) return;
+    setState(() => _audioProcessingMessageKey = null);
+  }
+
+  void _listenToAudioPlayer() {
+    _audioPlayerStateSubscription = _voiceService.playerStateStream.listen(
+      (state) {
+        if (!mounted || _activeAudioMessageKey == null) return;
+        setState(() {
+          _isActiveAudioPlaying = state.playing;
+          if (state.processingState == ProcessingState.completed) {
+            _isActiveAudioPlaying = false;
+          }
+        });
+      },
+    );
+    _audioPositionSubscription = _voiceService.positionStream.listen(
+      (position) {
+        if (!mounted || _activeAudioMessageKey == null) return;
+        setState(() => _activeAudioPosition = position);
+      },
+    );
+    _audioDurationSubscription = _voiceService.durationStream.listen(
+      (duration) {
+        if (!mounted || _activeAudioMessageKey == null) return;
+        setState(() => _activeAudioDuration = duration);
+      },
+    );
+  }
+
+  Future<void> _seekAudio(String messageKey, Duration position) async {
+    if (_activeAudioMessageKey != messageKey) return;
+    await _voiceService.seek(position);
+    if (mounted) setState(() => _activeAudioPosition = position);
   }
 
   Future<void> _showProviderConnectionDialog() async {
@@ -1353,6 +1586,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
                   isSplitMode: _isSplitMode,
                   selectedModel:
                       _leftPane.selectedModel ?? provider.selectedModel,
+                  selectedModelListenable: _leftPane.selectedModelListenable,
                   availableModels: _availableModels,
                   onModelChanged: (model) =>
                       _setPaneModel(_PaneSide.left, model),
@@ -1388,6 +1622,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
           onSearchChanged: _setChatSearchQuery,
           isDarkMode: widget.isDarkMode,
           selectedModel: _leftPane.selectedModel ?? provider.selectedModel,
+          selectedModelListenable: _leftPane.selectedModelListenable,
           availableModels: _availableModels,
           isAlwaysOnTop: _isAlwaysOnTop,
           onModelChanged: (model) => _setPaneModel(_PaneSide.left, model),
@@ -1410,7 +1645,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
   Widget _buildSplitLayout() {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final dividerWidth = 8.0;
+        const dividerWidth = 8.0;
         final availableWidth = constraints.maxWidth - dividerWidth;
         final leftWidth = availableWidth * _splitRatio;
         final rightWidth = availableWidth * (1 - _splitRatio);
@@ -1483,6 +1718,17 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
                     }
 
                     final message = pane.messages[index];
+                    final audioMessageKey =
+                        '${side.name}-${message.timestamp.microsecondsSinceEpoch}';
+                    final searchQuery =
+                        side == _PaneSide.left ? _chatSearchQuery.trim() : '';
+                    final isSearchMatch = _messageMatchesSearch(
+                      message,
+                      searchQuery,
+                    );
+                    final activeMessageIndex = _chatSearchMatches.isEmpty
+                        ? -1
+                        : _chatSearchMatches[_chatSearchCursor];
                     return MessageBubble(
                       key: ValueKey(
                         '${pane.side.name}-$index-${message.timestamp.microsecondsSinceEpoch}-${message.isUser}',
@@ -1490,6 +1736,9 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
                       message: message,
                       useFullWidth: _isSplitMode,
                       isDarkMode: widget.isDarkMode,
+                      searchQuery: isSearchMatch ? searchQuery : '',
+                      isActiveSearchMatch:
+                          side == _PaneSide.left && index == activeMessageIndex,
                       onEdit: message.isUser
                           ? (text) => _editMessage(index, side, text)
                           : null,
@@ -1498,6 +1747,42 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
                               !pane.isGenerating
                           ? () => _regenerateLastResponse(side)
                           : null,
+                      onSpeak: !message.isUser && !pane.isGenerating
+                          ? () => _speakMessage(message.text, audioMessageKey)
+                          : null,
+                      onDownload: !message.isUser && !pane.isGenerating
+                          ? (format) {
+                              if (format == MessageDownloadFormat.audio) {
+                                _downloadMessageAudio(
+                                  message.text,
+                                  audioMessageKey,
+                                );
+                              } else {
+                                _downloadMessagePdf(
+                                  message.text,
+                                  audioMessageKey,
+                                );
+                              }
+                            }
+                          : null,
+                      isAudioProcessing:
+                          _audioProcessingMessageKey == audioMessageKey,
+                      audioStatus: _audioProcessingMessageKey == audioMessageKey
+                          ? 'Generating audio…'
+                          : _audioReadyMessageKey == audioMessageKey
+                              ? _audioReadyStatus
+                              : null,
+                      isPdfExporting:
+                          _pdfExportingMessageKey == audioMessageKey,
+                      pdfStatus: _pdfExportingMessageKey == audioMessageKey
+                          ? _pdfExportStatus
+                          : null,
+                      isActiveAudio: _activeAudioMessageKey == audioMessageKey,
+                      isActiveAudioPlaying: _isActiveAudioPlaying,
+                      audioPosition: _activeAudioPosition,
+                      audioDuration: _activeAudioDuration,
+                      onSeekAudio: (position) =>
+                          _seekAudio(audioMessageKey, position),
                     );
                   },
                 ),
@@ -1513,9 +1798,30 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
           onStopGeneration: () => _stopGeneration(side),
           onPickFiles: () => _pickFiles(side: side),
           onRemoveFile: (index) => _removeAttachedFile(index, side: side),
+          selectedAction: pane.selectedAction,
+          onActionSelected: (action) {
+            if (pane.isGenerating) return;
+            final provider = context.read<ChatProvider>();
+            if (!provider.enableToolCalling) {
+              _showSnackBar(
+                  'Enable native tools in Settings to use action tags.');
+              return;
+            }
+            setState(() {
+              pane.selectedAction =
+                  pane.selectedAction == action ? null : action;
+            });
+          },
         ),
       ],
     );
+  }
+
+  bool _messageMatchesSearch(ChatMessage message, String query) {
+    if (query.isEmpty) return false;
+    final needle = query.toLowerCase();
+    return [message.text, message.thinkingText ?? '']
+        .any((text) => text.toLowerCase().contains(needle));
   }
 
   List<String> _imagePreviewPaths(_ChatPaneRuntime pane) {
@@ -1675,26 +1981,15 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
           const SizedBox(width: 8),
           SizedBox(
             width: 210,
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: pane.selectedModel,
-                isExpanded: true,
-                dropdownColor: colorScheme.surface,
-                style: TextStyle(
-                  color: colorScheme.onSurface,
-                  fontWeight: FontWeight.w700,
-                ),
-                items: _availableModels
-                    .map((model) => DropdownMenuItem(
-                          value: model,
-                          child: Text(model, overflow: TextOverflow.ellipsis),
-                        ))
-                    .toList(),
-                onChanged: pane.isGenerating
-                    ? null
-                    : (model) {
-                        if (model != null) _setPaneModel(side, model);
-                      },
+            child: ValueListenableBuilder<String?>(
+              valueListenable: pane.selectedModelListenable,
+              builder: (context, selectedModel, child) => ModelPickerButton(
+                selectedModel: selectedModel,
+                models: _availableModels,
+                enabled: !pane.isGenerating,
+                foregroundColor: colorScheme.onSurface,
+                backgroundColor: Colors.transparent,
+                onSelected: (model) => _setPaneModel(side, model),
               ),
             ),
           ),
@@ -1783,8 +2078,9 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
       right: isLeft ? null : 0,
       width: 72,
       child: DragTarget<int>(
-        onWillAccept: (index) => index != null,
-        onAccept: (index) => _dropConversationOnPane(index, side),
+        onWillAcceptWithDetails: (details) => true,
+        onAcceptWithDetails: (details) =>
+            _dropConversationOnPane(details.data, side),
         builder: (context, candidates, rejected) {
           final active = candidates.isNotEmpty;
           return IgnorePointer(
@@ -1794,7 +2090,7 @@ class _ChatScreenState extends State<ChatScreen> with WindowListener {
               duration: const Duration(milliseconds: 120),
               child: Container(
                 decoration: BoxDecoration(
-                  color: AppColors.orange.withOpacity(0.82),
+                  color: AppColors.orange.withValues(alpha: 0.82),
                   border: Border(
                     left: isLeft
                         ? BorderSide.none

@@ -11,6 +11,7 @@ class SvgSketchPreview extends StatelessWidget {
     if (trimmed.isEmpty) return const SizedBox.shrink();
 
     return Container(
+      width: double.infinity,
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -18,15 +19,19 @@ class SvgSketchPreview extends StatelessWidget {
         border: Border.all(color: AppColors.line),
       ),
       clipBehavior: Clip.antiAlias,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxHeight: 400),
-        child: SvgPicture.string(
-          trimmed,
-          fit: BoxFit.contain,
-          placeholderBuilder: (context) => const Center(
-            child: Padding(
-              padding: EdgeInsets.all(24),
-              child: CircularProgressIndicator(strokeWidth: 2),
+      child: SizedBox(
+        height: 300,
+        child: InteractiveViewer(
+          minScale: 0.5,
+          maxScale: 4,
+          child: SvgPicture.string(
+            trimmed,
+            fit: BoxFit.contain,
+            placeholderBuilder: (context) => const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
             ),
           ),
         ),
@@ -63,14 +68,8 @@ class MermaidPreview extends StatelessWidget {
             title: parsed.title,
             entries: parsed.entries,
           ),
-        _MermaidPreviewType.unknown => const Text(
-            'Mermaid preview is not available for this diagram type.',
-            style: TextStyle(
-              color: AppColors.muted,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
+        _MermaidPreviewType.unknown =>
+          _MermaidGenericPreview(source: repairedSource),
       },
     );
   }
@@ -100,6 +99,136 @@ class _MermaidFlowPreview extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// A readable visual fallback for Mermaid syntaxes that do not have a custom
+/// preview yet, such as sequence, class, state, and entity-relationship
+/// diagrams. This deliberately shows the diagram structure instead of its raw
+/// Mermaid source.
+class _MermaidGenericPreview extends StatelessWidget {
+  final String source;
+
+  const _MermaidGenericPreview({required this.source});
+
+  @override
+  Widget build(BuildContext context) {
+    final nodes = _extractNodes(source);
+    final title = _titleFor(source);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(
+              Icons.account_tree_outlined,
+              size: 16,
+              color: AppColors.teal,
+            ),
+            const SizedBox(width: 7),
+            Text(
+              title,
+              style: const TextStyle(
+                color: AppColors.charcoal,
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          alignment: WrapAlignment.center,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 4,
+          runSpacing: 10,
+          children: [
+            for (var index = 0; index < nodes.length; index++) ...[
+              _PreviewNode(label: nodes[index], filled: index == 0),
+              if (index < nodes.length - 1)
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 2),
+                  child: Icon(
+                    Icons.arrow_forward_rounded,
+                    size: 18,
+                    color: AppColors.teal,
+                  ),
+                ),
+            ],
+          ],
+        ),
+      ],
+    );
+  }
+
+  static List<String> _extractNodes(String source) {
+    final nodes = <String>[];
+    void add(String? value) {
+      final label = (value ?? '')
+          .replaceAll(RegExp(r'^[\[\("\s]+|[\]\)"\s]+$'), '')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+      if (label.isNotEmpty && !nodes.contains(label) && nodes.length < 8) {
+        nodes.add(label);
+      }
+    }
+
+    for (final line in source.split(RegExp(r'[\r\n]+'))) {
+      final trimmed = line.trim();
+      if (trimmed.isEmpty || trimmed.startsWith('%%')) continue;
+      if (RegExp(
+        r'^(?:sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|journey|gantt|timeline|requirementDiagram)\b',
+        caseSensitive: false,
+      ).hasMatch(trimmed)) {
+        continue;
+      }
+
+      final declared = RegExp(
+        r'^(?:participant|actor|class)\s+([^\s{]+)(?:\s+as\s+(.+))?',
+        caseSensitive: false,
+      ).firstMatch(trimmed);
+      if (declared != null) {
+        add(declared.group(2) ?? declared.group(1));
+        continue;
+      }
+
+      final edge = RegExp(
+        r'^([A-Za-z0-9_*]+)\s*(?:-->|->>|-->>|--|==>|<--|[|}{o]+--[|}{o]+)\s*([A-Za-z0-9_*]+)',
+      ).firstMatch(trimmed);
+      if (edge != null) {
+        add(edge.group(1));
+        add(edge.group(2));
+        continue;
+      }
+
+      final labeledNode = RegExp(
+        r'([A-Za-z0-9_]+)\s*(?:\["([^"\]]+)"\]|\[([^\]]+)\]|\(\(([^)]+)\)\)|\(([^)]+)\))',
+      ).firstMatch(trimmed);
+      if (labeledNode != null) {
+        add(labeledNode.group(2) ??
+            labeledNode.group(3) ??
+            labeledNode.group(4) ??
+            labeledNode.group(5) ??
+            labeledNode.group(1));
+      }
+    }
+
+    return nodes.isEmpty ? const ['Diagram'] : nodes;
+  }
+
+  static String _titleFor(String source) {
+    final firstLine = source
+        .split(RegExp(r'[\r\n]+'))
+        .map((line) => line.trim())
+        .firstWhere((line) => line.isNotEmpty, orElse: () => '');
+    final name = firstLine
+        .replaceFirst(RegExp(r'-v2$', caseSensitive: false), '')
+        .replaceAllMapped(
+          RegExp(r'([a-z])([A-Z])'),
+          (match) => '${match.group(1)} ${match.group(2)}',
+        )
+        .trim();
+    return name.isEmpty ? 'Diagram preview' : '$name preview';
   }
 }
 
@@ -195,7 +324,10 @@ class _MermaidChartPreview extends StatelessWidget {
                 .map(
                   (entry) => Expanded(
                     child: LayoutBuilder(builder: (context, constraints) {
-                      final barAreaHeight = (constraints.maxHeight - 30)
+                      // Reserve enough vertical room for both text labels and
+                      // their spacing. The previous 30 px reservation could
+                      // overflow a 150 px chart preview on desktop.
+                      final barAreaHeight = (constraints.maxHeight - 40)
                           .clamp(8.0, double.infinity);
                       final barHeight =
                           (entry.value.abs() / safeMax).clamp(0.06, 1.0) *
@@ -1276,6 +1408,10 @@ class _ToolActivityTile extends StatelessWidget {
         return Icons.science_outlined;
       case 'web_search':
         return Icons.public_rounded;
+      case 'deep_research':
+        return Icons.travel_explore_rounded;
+      case 'brainstorm':
+        return Icons.tips_and_updates_outlined;
       case 'note_saver':
         return Icons.sticky_note_2_outlined;
       case 'web_scraper_reader':
@@ -1305,6 +1441,7 @@ class _ToolActivityTile extends StatelessWidget {
   static Color _accentFor(String id) {
     switch (id) {
       case 'web_search':
+      case 'deep_research':
       case 'local_document_search':
       case 'web_scraper_reader':
       case 'webpage_reader':
